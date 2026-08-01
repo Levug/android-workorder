@@ -91,6 +91,31 @@ $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+### Подпись release-сборки
+
+Закрытый ключ и пароли не должны храниться в Git. Создай локальный файл `keystore.properties`, который уже добавлен в `.gitignore`:
+
+```properties
+storeFile=C:/private/path/workorder-release.jks
+storePassword=PRIVATE_STORE_PASSWORD
+keyAlias=workorder-release
+keyPassword=PRIVATE_KEY_PASSWORD
+```
+
+После этого подписанная сборка создаётся командой:
+
+```powershell
+.\gradlew.bat assembleRelease
+```
+
+Результат находится в `app/build/outputs/apk/release/app-release.apk`. Для всех будущих обновлений приложения необходимо использовать тот же закрытый ключ.
+
+SHA-256 сертификата официальной release-подписи:
+
+```text
+B2:97:B3:1A:5D:5F:C1:32:B1:A8:28:B1:59:4C:4E:9B:47:0B:10:71:DB:2F:4E:2A:9C:E5:B9:99:98:2A:BF:E1
+```
+
 Установка на подключённое устройство:
 
 ```powershell
@@ -124,4 +149,3 @@ app/src/main/java/com/workorder/app/
 ```
 
 История изменений находится в [CHANGELOG.md](CHANGELOG.md).
-
