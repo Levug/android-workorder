@@ -1,0 +1,39 @@
+# Android Studio and local SDK
+.gradle/
+.idea/
+.kotlin/
+build/
+local.properties
+*.iml
+
+# Native and generated build files
+.externalNativeBuild/
+.cxx/
+captures/
+
+# Signing credentials
+*.jks
+*.keystore
+keystore.properties
+
+# Build artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Device backups and exported private data
+*.tar
+config-files-before-cleanup-*/
+*.db
+*.db-wal
+*.db-shm
+
+# Local assistant context
+/CLAUDE_CONTEXT.md
+
+# Logs and operating-system files
+*.log
+*.hprof
+.DS_Store
+Thumbs.db
