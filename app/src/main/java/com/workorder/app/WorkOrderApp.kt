@@ -9,6 +9,9 @@ import com.workorder.app.data.repository.SettingsRepository
 import com.workorder.app.data.repository.WorkOrderRepository
 import com.workorder.app.util.ExportImportManager
 import com.workorder.app.util.ReportExporter
+import com.workorder.app.sync.PhoneWearEventProcessor
+import com.workorder.app.sync.PhoneWearApi
+import com.workorder.app.sync.PhoneWearSyncManager
 
 /**
  * Ручной DI-контейнер: единственное место, где создаются база и репозитории.
@@ -21,6 +24,17 @@ class AppContainer(context: Context) {
     val workOrderRepository = WorkOrderRepository(database, settingsRepository)
     val operationRepository = OperationRepository(database.operationDao())
     val bankRepository = BankRepository(database)
+    private val phoneWearApi = PhoneWearApi(context.applicationContext)
+    val wearEventProcessor = PhoneWearEventProcessor(
+        phoneWearApi,
+        operationRepository,
+        workOrderRepository
+    )
+    val wearSyncManager = PhoneWearSyncManager(
+        phoneWearApi,
+        operationRepository,
+        wearEventProcessor
+    )
 
     val reportExporter = ReportExporter(context.applicationContext)
     val exportImportManager = ExportImportManager(
@@ -32,4 +46,9 @@ class AppContainer(context: Context) {
 
 class WorkOrderApp : Application() {
     val container: AppContainer by lazy { AppContainer(this) }
+
+    override fun onCreate() {
+        super.onCreate()
+        container.wearSyncManager.start()
+    }
 }

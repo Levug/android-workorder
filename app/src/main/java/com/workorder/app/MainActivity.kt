@@ -50,6 +50,11 @@ import kotlinx.coroutines.delay
 import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
+    override fun onStart() {
+        super.onStart()
+        (application as WorkOrderApp).container.wearSyncManager.retryPendingEvents()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

@@ -29,7 +29,8 @@ import androidx.room.PrimaryKey
     indices = [
         Index("workDayId"),
         Index("operationId"),
-        Index("createdAt")
+        Index("createdAt"),
+        Index(value = ["sourceEventId"], unique = true)
     ]
 )
 data class OperationEntry(
@@ -38,5 +39,7 @@ data class OperationEntry(
     val workDayId: Long,
     val operationId: Long,
     val quantity: Int,
-    val createdAt: Long
+    val createdAt: Long,
+    /** Уникальный идентификатор внешнего события, например добавления с часов. */
+    val sourceEventId: String? = null
 )

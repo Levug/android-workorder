@@ -2,6 +2,7 @@ package com.workorder.app.data.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.workorder.app.data.model.OperationEntry
 import kotlinx.coroutines.flow.Flow
@@ -76,8 +77,11 @@ interface OperationEntryDao {
     )
     fun observeMonthTotals(yearMonth: String): Flow<List<OperationTotal>>
 
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(entry: OperationEntry): Long
+
+    @Query("SELECT id FROM operation_entries WHERE sourceEventId = :sourceEventId LIMIT 1")
+    suspend fun getIdBySourceEventId(sourceEventId: String): Long?
 
     @Query("DELETE FROM operation_entries WHERE id = :entryId")
     suspend fun deleteById(entryId: Long)

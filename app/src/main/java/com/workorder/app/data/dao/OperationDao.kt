@@ -23,6 +23,9 @@ interface OperationDao {
     @Query("SELECT * FROM operations WHERE id = :id")
     suspend fun getById(id: Long): Operation?
 
+    @Query("SELECT * FROM operations WHERE name = :name COLLATE NOCASE LIMIT 1")
+    suspend fun getByName(name: String): Operation?
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(operation: Operation): Long
 

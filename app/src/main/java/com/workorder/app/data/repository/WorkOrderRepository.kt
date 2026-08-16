@@ -71,6 +71,37 @@ class WorkOrderRepository(
         }
     }
 
+    /**
+     * Добавляет событие, пришедшее с внешнего устройства, ровно один раз.
+     * Повторная доставка того же sourceEventId возвращает id уже сохранённой записи.
+     */
+    suspend fun addSyncedEntry(
+        date: String,
+        operationId: Long,
+        quantity: Int,
+        createdAt: Long,
+        sourceEventId: String
+    ): Long {
+        require(quantity != 0) { "quantity must not be zero" }
+        require(sourceEventId.isNotBlank()) { "sourceEventId must not be blank" }
+        val defaultHours = defaultDayHours()
+        return db.withTransaction {
+            entryDao.getIdBySourceEventId(sourceEventId)?.let { return@withTransaction it }
+            val dayId = getOrCreateDayId(date, defaultHours)
+            val inserted = entryDao.insert(
+                OperationEntry(
+                    workDayId = dayId,
+                    operationId = operationId,
+                    quantity = quantity,
+                    createdAt = createdAt,
+                    sourceEventId = sourceEventId
+                )
+            )
+            if (inserted != -1L) inserted
+            else checkNotNull(entryDao.getIdBySourceEventId(sourceEventId))
+        }
+    }
+
     suspend fun removeEntry(entryId: Long) = entryDao.deleteById(entryId)
 
     suspend fun setDayHours(date: String, hours: Double) {

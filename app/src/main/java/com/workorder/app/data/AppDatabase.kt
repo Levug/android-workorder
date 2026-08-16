@@ -27,7 +27,7 @@ import com.workorder.app.data.model.WorkDay
         MonthlyPlan::class,
         BankAllocation::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -198,6 +198,17 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v9: защита синхронизации с часами от повторной доставки одного события. */
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE operation_entries ADD COLUMN sourceEventId TEXT")
+                database.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS index_operation_entries_sourceEventId " +
+                        "ON operation_entries(sourceEventId)"
+                )
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -207,7 +218,8 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                     .addMigrations(
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4,
-                        MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8
+                        MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8,
+                        MIGRATION_8_9
                     )
                     .build()
                 INSTANCE = instance

@@ -9,6 +9,17 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <!--
+        play-services-wearable 10.2.0 predates Android 11 package visibility.
+        Without these declarations it cannot discover the Wear OS companion
+        service on modern phones, especially com.google.android.wearable.app.cn.
+    -->
+    <queries>
+        <package android:name="com.google.android.gms" />
+        <package android:name="com.google.android.wearable.app" />
+        <package android:name="com.google.android.wearable.app.cn" />
+    </queries>
+
     <application
         android:name=".WorkOrderApp"
         android:allowBackup="true"
@@ -26,6 +37,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".sync.PhoneWearListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/workorder/v1/entries" />
+            </intent-filter>
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

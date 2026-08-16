@@ -61,4 +61,28 @@ class OperationUpdateIntegrityTest {
         assertEquals("Renamed operation", entries.single().operationName)
         assertEquals(0.5, entries.single().durationHours, 0.0)
     }
+
+    @Test
+    fun repeatedWatchEventCannotCreateDuplicateJournalEntry() = runBlocking {
+        val operationId = database.operationDao().insert(
+            Operation(name = "Synced operation", durationHours = 0.25)
+        )
+        val workDayId = database.workDayDao().insert(
+            WorkDay(date = "2099-01-02", totalHours = 8.0)
+        )
+        val event = OperationEntry(
+            workDayId = workDayId,
+            operationId = operationId,
+            quantity = 10,
+            createdAt = 2L,
+            sourceEventId = "watch-event-1"
+        )
+
+        val firstId = database.operationEntryDao().insert(event)
+        val duplicateId = database.operationEntryDao().insert(event)
+
+        assertEquals(-1L, duplicateId)
+        assertEquals(firstId, database.operationEntryDao().getIdBySourceEventId("watch-event-1"))
+        assertEquals(1, database.operationEntryDao().observeEntriesForDay(workDayId).first().size)
+    }
 }

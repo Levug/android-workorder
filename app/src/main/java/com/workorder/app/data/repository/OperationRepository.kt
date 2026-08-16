@@ -10,6 +10,8 @@ class OperationRepository(private val operationDao: OperationDao) {
 
     suspend fun getById(id: Long): Operation? = operationDao.getById(id)
 
+    suspend fun getByName(name: String): Operation? = operationDao.getByName(name.trim())
+
     suspend fun save(operation: Operation): Long {
         return if (operation.id == 0L) {
             operationDao.insert(operation.copy(sortOrder = operationDao.nextSortOrder()))
