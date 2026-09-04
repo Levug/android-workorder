@@ -19,6 +19,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.workorder.app.data.model.WorkDay
@@ -44,6 +48,7 @@ fun CalendarGrid(
     modifier: Modifier = Modifier
 ) {
     val today = LocalDate.now()
+    val heatMax = maxOf(16.0, days.values.maxOfOrNull { it.totalHours } ?: 0.0)
 
     val weeks: List<List<LocalDate?>> = remember(month) {
         val first = month.atDay(1)
@@ -83,6 +88,7 @@ fun CalendarGrid(
                             DayCell(
                                 date = date,
                                 workDay = days[date],
+                                heatMax = heatMax,
                                 isScheduledOff = when (days[date]?.dayType) {
                                     WorkDayType.HOLIDAY -> true
                                     WorkDayType.REGULAR -> false
@@ -98,25 +104,50 @@ fun CalendarGrid(
                 }
             }
         }
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("0 ч", style = MaterialTheme.typography.labelSmall)
+            for (step in 0..4) {
+                Box(Modifier.weight(1f).height(10.dp).clip(MaterialTheme.shapes.small)
+                    .background(attendanceHeatColor(heatMax * step / 4, heatMax, MaterialTheme.colorScheme.primary)))
+            }
+            Text("${heatMax.formatNumber()} ч", style = MaterialTheme.typography.labelSmall)
+        }
+        Text("Темнее — больше фактических часов присутствия", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+internal fun attendanceHeatColor(hours: Double, maxHours: Double, accent: Color): Color {
+    val fraction = if (hours.isFinite() && maxHours.isFinite() && maxHours > 0)
+        (hours / maxHours).toFloat().coerceIn(0f, 1f) else 0f
+    // Every RGB channel decreases with attendance; do not interpolate via Oklab,
+    // which can clip channels at the ends of some palettes.
+    fun channel(value: Float): Float {
+        val light = 0.88f + value * 0.12f
+        val dark = value * 0.35f
+        return light + (dark - light) * fraction
+    }
+    return Color(channel(accent.red), channel(accent.green), channel(accent.blue))
 }
 
 @Composable
 private fun DayCell(
     date: LocalDate,
     workDay: WorkDay?,
+    heatMax: Double,
     isToday: Boolean,
     isScheduledOff: Boolean,
     onClick: () -> Unit
 ) {
     val filled = workDay != null
     val background = when {
-        filled -> MaterialTheme.colorScheme.primaryContainer
+        filled -> attendanceHeatColor(workDay!!.totalHours, heatMax, MaterialTheme.colorScheme.primary)
         isScheduledOff -> MaterialTheme.colorScheme.tertiaryContainer
         else -> MaterialTheme.colorScheme.surfaceContainer
     }
     val contentColor = when {
-        filled -> MaterialTheme.colorScheme.onPrimaryContainer
+        filled -> if (background.luminance() > 0.179f) Color.Black else Color.White
         isScheduledOff -> MaterialTheme.colorScheme.onTertiaryContainer
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
@@ -126,6 +157,10 @@ private fun DayCell(
             .aspectRatio(1f)
             .clip(MaterialTheme.shapes.small)
             .background(background)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "$date: " + (workDay?.let { "${it.totalHours.formatNumber()} фактических часов" }
+                    ?: "нет наряда") + if (isScheduledOff) ", выходной" else ""
+            }
             .then(
                 if (isToday) Modifier.border(
                     width = 2.dp,

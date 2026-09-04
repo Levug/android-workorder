@@ -22,8 +22,9 @@ android {
         applicationId = "com.workorder.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "3.3-beta"
+        versionCode = 7
+        versionName = "3.4-beta"
+        buildConfigField("boolean", "ENABLE_WEAR_SYNC", "true")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -42,6 +43,12 @@ android {
         }
     }
     buildTypes {
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".qa"
+            matchingFallbacks += listOf("debug")
+            buildConfigField("boolean", "ENABLE_WEAR_SYNC", "false")
+        }
         release {
             signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
@@ -51,6 +58,9 @@ android {
             )
         }
     }
+    // Instrumentation is isolated from the real user database by default.
+    testBuildType = "qa"
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

@@ -11,6 +11,7 @@ import kotlinx.coroutines.runBlocking
 
 class PhoneWearListenerService : WearableListenerService() {
     override fun onDataChanged(dataEvents: DataEventBuffer) {
+        if (!com.workorder.app.BuildConfig.ENABLE_WEAR_SYNC) return
         val payloads = buildList<Pair<Uri, ByteArray>> {
             dataEvents.forEach { event ->
                 val item = event.dataItem

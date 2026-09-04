@@ -50,6 +50,8 @@ class WorkOrderRepository(
     fun observeMonthTotals(yearMonth: String): Flow<List<OperationTotal>> =
         entryDao.observeMonthTotals(yearMonth)
 
+    fun observeDailyProducedHours(yearMonth: String) = entryDao.observeDailyProducedHours(yearMonth)
+
     /**
      * Добавляет партию операций в наряд. Если наряда на эту дату ещё нет,
      * он создаётся автоматически со стандартной продолжительностью дня.

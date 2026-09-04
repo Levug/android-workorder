@@ -31,8 +31,20 @@ data class EntryWithOperation(
     val hours: Double get() = durationHours * quantity
 }
 
+data class DailyProducedHours(val date: String, val hours: Double)
+
 @Dao
 interface OperationEntryDao {
+
+    @Query("""
+        SELECT wd.date AS date, COALESCE(SUM(oe.quantity * op.durationHours), 0.0) AS hours
+        FROM work_days wd
+        LEFT JOIN operation_entries oe ON oe.workDayId = wd.id
+        LEFT JOIN operations op ON op.id = oe.operationId
+        WHERE wd.date LIKE :yearMonth || '-%'
+        GROUP BY wd.date ORDER BY wd.date
+    """)
+    fun observeDailyProducedHours(yearMonth: String): Flow<List<DailyProducedHours>>
 
     @Query(
         """

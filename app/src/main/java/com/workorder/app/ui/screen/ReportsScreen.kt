@@ -409,7 +409,15 @@ private fun ChartsReportTab(uiState: ReportUiState) {
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { SectionCard { Text("Часы по дням", style = MaterialTheme.typography.titleMedium); MonthColumnChart(uiState.dailyHours, uiState.month.lengthOfMonth()) } }
+        item {
+            SectionCard {
+                Text("Нормо-часы по дням", style = MaterialTheme.typography.titleMedium)
+                Text("Выполненные операции × норма времени, до переводов в банк",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (uiState.dailyNormHours.isEmpty()) Text("В этом месяце пока нет нарядов")
+                else MonthColumnChart(uiState.dailyNormHours, uiState.month.lengthOfMonth(), unit = "нч")
+            }
+        }
         if (uiState.totals.isNotEmpty()) {
             item {
                 val byGrade = uiState.totals

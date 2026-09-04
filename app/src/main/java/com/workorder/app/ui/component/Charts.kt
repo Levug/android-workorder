@@ -193,10 +193,13 @@ fun DonutChart(
 fun MonthColumnChart(
     dailyValues: List<Pair<Int, Double>>,
     daysInMonth: Int,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    unit: String = "ч"
 ) {
     if (dailyValues.isEmpty()) return
-    val maxValue = dailyValues.maxOf { it.second }.takeIf { it > 0 } ?: 1.0
+    val maxValue = dailyValues.maxOf { it.second }.coerceAtLeast(0.0)
+    val minValue = dailyValues.minOf { it.second }.coerceAtMost(0.0)
+    val span = (maxValue - minValue).takeIf { it > 0 } ?: 1.0
     val barColor = MaterialTheme.colorScheme.primary
     val gridColor = MaterialTheme.colorScheme.outlineVariant
 
@@ -206,7 +209,8 @@ fun MonthColumnChart(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "макс. ${maxValue.formatNumber()} ч",
+                text = "макс. ${maxValue.formatNumber()} $unit" +
+                    if (minValue < 0) " · мин. ${minValue.formatNumber()} $unit" else "",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -220,6 +224,7 @@ fun MonthColumnChart(
             val valueByDay = dailyValues.toMap()
             val slot = size.width / daysInMonth
             val barWidth = (slot * 0.65f).coerceAtLeast(2f)
+            val zeroY = (maxValue / span * size.height).toFloat()
 
             // Сетка: линии на 0%, 50%, 100%
             listOf(0f, 0.5f, 1f).forEach { fraction ->
@@ -234,17 +239,19 @@ fun MonthColumnChart(
 
             for (day in 1..daysInMonth) {
                 val value = valueByDay[day] ?: continue
-                val barHeight = (value / maxValue * size.height).toFloat()
+                val barHeight = (kotlin.math.abs(value) / span * size.height).toFloat()
+                if (barHeight <= 0) continue
                 drawRoundRect(
                     color = barColor,
                     topLeft = Offset(
                         x = (day - 1) * slot + (slot - barWidth) / 2,
-                        y = size.height - barHeight
+                        y = if (value >= 0) zeroY - barHeight else zeroY
                     ),
                     size = Size(barWidth, barHeight),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2, barWidth / 2)
                 )
             }
+            drawLine(gridColor, Offset(0f, zeroY), Offset(size.width, zeroY), strokeWidth = 2f)
         }
         Spacer(Modifier.height(4.dp))
         Row(

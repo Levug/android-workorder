@@ -33,15 +33,17 @@ class BankRepositoryTest {
     fun priorityKeepsHigherGradeInReport() = runBlocking {
         val low = db.operationDao().insert(Operation(name = "Grade 4", durationHours = 1.0, grade = 4))
         val high = db.operationDao().insert(Operation(name = "Grade 5", durationHours = 1.0, grade = 5))
-        val day = db.workDayDao().insert(WorkDay(date = "2099-02-01", totalHours = 8.0))
+        // The limit is based on presence, not on the monthly planned-hours field.
+        val day = db.workDayDao().insert(WorkDay(date = "2099-02-01", totalHours = 5.0))
         db.operationEntryDao().insert(OperationEntry(workDayId = day, operationId = low, quantity = 5, createdAt = 1))
         db.operationEntryDao().insert(OperationEntry(workDayId = day, operationId = high, quantity = 5, createdAt = 2))
 
         val repository = BankRepository(db)
-        repository.updatePlan("2099-02", plannedHours = 5.0, coefficient = 1.0, strategy = BankStrategy.PRIORITY)
+        repository.updatePlan("2099-02", plannedHours = 184.0, coefficient = 1.0, strategy = BankStrategy.PRIORITY)
         repository.applyAutomatic(repository.observe("2099-02").first())
 
         val state = repository.observe("2099-02").first()
+        assertEquals(5.0, state.targetHours, 0.0)
         assertEquals(0, state.lines.single { it.operation.id == low }.adjustedQuantity)
         assertEquals(5, state.lines.single { it.operation.id == high }.adjustedQuantity)
         assertEquals(5.0, state.adjustedHours, 0.0)
@@ -51,6 +53,7 @@ class BankRepositoryTest {
     fun priorityReturnsHigherGradeFromExistingBankFirst() = runBlocking {
         val low = db.operationDao().insert(Operation(name = "Grade 4", durationHours = 1.0, grade = 4))
         val high = db.operationDao().insert(Operation(name = "Grade 5", durationHours = 1.0, grade = 5))
+        db.workDayDao().insert(WorkDay(date = "2099-02-01", totalHours = 3.0))
         db.bankDao().insertAllocations(
             listOf(
                 com.workorder.app.data.model.BankAllocation("2099-01", low, 3),
@@ -58,7 +61,7 @@ class BankRepositoryTest {
             )
         )
         val repository = BankRepository(db)
-        repository.updatePlan("2099-02", plannedHours = 3.0, coefficient = 1.0, strategy = BankStrategy.PRIORITY)
+        repository.updatePlan("2099-02", plannedHours = 184.0, coefficient = 1.0, strategy = BankStrategy.PRIORITY)
         repository.applyAutomatic(repository.observe("2099-02").first())
 
         val state = repository.observe("2099-02").first()

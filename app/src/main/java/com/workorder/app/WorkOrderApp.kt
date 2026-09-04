@@ -39,8 +39,7 @@ class AppContainer(context: Context) {
     val reportExporter = ReportExporter(context.applicationContext)
     val exportImportManager = ExportImportManager(
         context.applicationContext,
-        operationRepository,
-        settingsRepository
+        com.workorder.app.data.repository.BackupRepository(database)
     )
 }
 
@@ -49,6 +48,6 @@ class WorkOrderApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        container.wearSyncManager.start()
+        if (BuildConfig.ENABLE_WEAR_SYNC) container.wearSyncManager.start()
     }
 }

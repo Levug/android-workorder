@@ -44,7 +44,7 @@ data class ReportUiState(
     val salary: SalaryBreakdown = SalaryBreakdown(),
     val forecastSalary: SalaryBreakdown = SalaryBreakdown(),
     val totals: List<OperationTotal> = emptyList(),
-    val dailyHours: List<Pair<Int, Double>> = emptyList(),
+    val dailyNormHours: List<Pair<Int, Double>> = emptyList(),
     val bank: BankState? = null,
     val isLoading: Boolean = true
 ) {
@@ -68,8 +68,9 @@ class ReportViewModel(
         combine(
             workOrderRepository.observeMonth(ym),
             bankRepository.observe(ym),
-            settingsRepository.observe()
-        ) { days, bank, settings ->
+            settingsRepository.observe(),
+            workOrderRepository.observeDailyProducedHours(ym)
+        ) { days, bank, settings, producedByDay ->
             val workedHours = days.sumOf { it.totalHours }
             val adjustedTotals = bank.lines.mapNotNull { line ->
                 if (line.adjustedQuantity == 0) null else OperationTotal(
@@ -96,7 +97,7 @@ class ReportViewModel(
                 salary = salary,
                 forecastSalary = forecastSalary,
                 totals = adjustedTotals,
-                dailyHours = days.map { LocalDate.parse(it.date).dayOfMonth to it.totalHours },
+                dailyNormHours = producedByDay.map { LocalDate.parse(it.date).dayOfMonth to it.hours },
                 bank = bank,
                 isLoading = false
             )

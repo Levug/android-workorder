@@ -52,7 +52,7 @@ import java.time.LocalDate
 class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
-        (application as WorkOrderApp).container.wearSyncManager.retryPendingEvents()
+        if (BuildConfig.ENABLE_WEAR_SYNC) (application as WorkOrderApp).container.wearSyncManager.retryPendingEvents()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

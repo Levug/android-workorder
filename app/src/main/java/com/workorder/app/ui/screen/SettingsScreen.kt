@@ -23,15 +23,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.FileDownload
-import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -58,6 +55,7 @@ import com.workorder.app.BuildConfig
 import com.workorder.app.data.model.ThemeMode
 import com.workorder.app.data.model.WorkSchedule
 import com.workorder.app.ui.component.SectionCard
+import com.workorder.app.ui.component.DataTransferControls
 import com.workorder.app.ui.theme.supportsDynamicColor
 import com.workorder.app.ui.theme.themePresets
 import com.workorder.app.ui.viewmodel.SettingsViewModel
@@ -330,32 +328,7 @@ fun SettingsScreen(
                     )
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { viewModel.exportData() },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Outlined.FileUpload, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Экспорт")
-                    }
-                    OutlinedButton(
-                        onClick = { viewModel.importData() },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Outlined.FileDownload, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Импорт")
-                    }
-                }
-                Text(
-                    text = "Файл: Документы/WorkOrder/work_order_settings.json",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                DataTransferControls(viewModel)
             }
 
             SectionCard {
