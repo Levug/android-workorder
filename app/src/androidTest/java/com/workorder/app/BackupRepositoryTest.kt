@@ -11,6 +11,7 @@ import com.workorder.app.data.repository.WorkOrderRepository
 import com.workorder.app.util.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -24,8 +25,8 @@ class BackupRepositoryTest {
     private val full = TransferKind.FULL_DATABASE
     private val fixture = BackupSnapshot(
         operations = listOf(Operation(5, "Сборка", 0.5, 5, 1), Operation(9, "Контроль", 0.25, 3, 0)),
-        settings = Settings(hourlyRate = 300.0, workSchedule = WorkSchedule.TWO_TWO),
-        workDays = listOf(WorkDay(4, "2099-01-01", 12.0, "Заметка\nна две строки"), WorkDay(7, "2099-01-02", 8.0)),
+        settings = Settings(hourlyRate = 300.0, workSchedule = WorkSchedule.TWO_TWO, interfaceScale = 1.15, daySpecializationEnabled = true),
+        workDays = listOf(WorkDay(4, "2099-01-01", 12.0, "Заметка\nна две строки", specialization = "Сборка"), WorkDay(7, "2099-01-02", 8.0)),
         entries = listOf(OperationEntry(20, 4, 5, 17, 1234, "from-watch"), OperationEntry(21, 4, 5, -2, 1235)),
         monthlyPlans = listOf(MonthlyPlan("2099-01", 184.0)),
         bankAllocations = listOf(BankAllocation("2098-12", 5, 3), BankAllocation("2099-01", 5, -1))
@@ -127,6 +128,97 @@ class BackupRepositoryTest {
         assertTrue(manager.hasSafetyCopy())
         assertEquals(repository.snapshot(), BackupCodec.decode(manager.prepareSafetyExport().readText(), full))
         assertTrue(output.delete())
+    }
+
+    @Test fun editingSpecializationAndHidingItPreservesJournal() = runBlocking {
+        val before = repository.snapshot()
+        val preferences = SettingsRepository(db.settingsDao())
+        val work = WorkOrderRepository(db, preferences)
+        work.setDaySpecialization("2099-01-01", "  Наладка  ")
+        preferences.update { it.copy(daySpecializationEnabled = false) }
+        val after = repository.snapshot()
+        assertEquals("Наладка", after.workDays.first().specialization)
+        assertEquals(before.entries, after.entries)
+        assertEquals(before.workDays.first().totalHours, after.workDays.first().totalHours, 0.0)
+        assertEquals(before.workDays.first().comment, after.workDays.first().comment)
+        assertEquals(before.bankAllocations, after.bankAllocations)
+        preferences.update { it.copy(daySpecializationEnabled = true) }
+        assertEquals("Наладка", repository.snapshot().workDays.first().specialization)
+        work.setDaySpecialization("2099-01-01", "")
+        assertEquals("", repository.snapshot().workDays.first().specialization)
+        assertEquals(before.entries, repository.snapshot().entries)
+        assertIntegrity()
+    }
+
+    @Test fun concurrentSettingsEditsDoNotOverwriteEachOther() = runBlocking {
+        val preferences = SettingsRepository(db.settingsDao())
+        kotlinx.coroutines.coroutineScope {
+            launch { preferences.update { it.copy(hourlyRate = 999.0) } }
+            launch { preferences.update { it.copy(interfaceScale = 1.3) } }
+        }
+        val updated = preferences.observe().first()
+        assertEquals(999.0, updated.hourlyRate, 0.0)
+        assertEquals(1.3, updated.interfaceScale, 0.0)
+    }
+
+    @Test fun specializationOnlyDayIsNotAttendanceAndSurvivesBackup() = runBlocking {
+        val work = WorkOrderRepository(db, SettingsRepository(db.settingsDao()))
+        val before = repository.snapshot()
+        work.setDaySpecialization("2099-01-03", "  Наладка  ")
+        val plan = work.observeDay("2099-01-03").first()!!
+        assertFalse(plan.isRecorded)
+        assertEquals(0.0, plan.totalHours, 0.0)
+        assertEquals("Наладка", plan.specialization)
+        assertEquals(before.workDays, work.observeRecordedMonth("2099-01").first())
+        assertEquals(listOf(7.5, 0.0), work.observeDailyProducedHours("2099-01").first().map { it.hours })
+        val snapshot = repository.snapshot()
+        repository.import(BackupCodec.decode(BackupCodec.encode(snapshot, full), full), full) {}
+        assertEquals(snapshot, repository.snapshot())
+        work.setDaySpecialization("2099-01-03", "")
+        assertEquals(before.workDays, work.observeRecordedMonth("2099-01").first())
+        assertEquals(before.entries, repository.snapshot().entries)
+        assertIntegrity()
+    }
+
+    @Test fun addingPhoneOrWatchOperationPromotesPlanExactlyOnceAndKeepsText() = runBlocking {
+        val preferences = SettingsRepository(db.settingsDao())
+        preferences.update { it.copy(defaultDayHours = 9.5) }
+        val work = WorkOrderRepository(db, preferences)
+        for (watch in listOf(false, true)) {
+            val date = if (watch) "2099-01-04" else "2099-01-03"
+            work.setDaySpecialization(date, "Сборка")
+            val id = work.observeDay(date).first()!!.id
+            if (watch) {
+                val entry = work.addSyncedEntry(date, 5, 17, 5555, "planned-day-watch")
+                assertEquals(entry, work.addSyncedEntry(date, 5, 17, 5555, "planned-day-watch"))
+            } else work.addEntry(date, 5, 17)
+            val recorded = work.observeDay(date).first()!!
+            assertEquals(id, recorded.id)
+            assertTrue(recorded.isRecorded)
+            assertEquals(9.5, recorded.totalHours, 0.0)
+            assertEquals("Сборка", recorded.specialization)
+            assertEquals(17, work.observeDayTotals(date).first().single().totalCount)
+            work.setDayHours(date, 0.0)
+            work.addEntry(date, 5, 1)
+            assertTrue(work.observeDay(date).first()!!.isRecorded)
+            assertEquals(0.0, work.observeDay(date).first()!!.totalHours, 0.0)
+        }
+        assertIntegrity()
+    }
+
+    @Test fun explicitHoursMarkPlanButFailedOperationDoesNot() = runBlocking {
+        val work = WorkOrderRepository(db, SettingsRepository(db.settingsDao()))
+        val date = "2099-01-03"
+        work.setDaySpecialization(date, "Контроль")
+        val plan = work.observeDay(date).first()!!
+        try {
+            work.addEntry(date, 999, 1)
+            fail("Invalid foreign key must roll back promotion")
+        } catch (_: android.database.SQLException) { }
+        assertEquals(plan, work.observeDay(date).first())
+        work.setDayHours(date, 11.0)
+        assertEquals(plan.copy(totalHours = 11.0, isRecorded = true), work.observeDay(date).first())
+        assertIntegrity()
     }
 
     private fun assertIntegrity() {

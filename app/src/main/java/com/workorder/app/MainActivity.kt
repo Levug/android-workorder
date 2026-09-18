@@ -68,7 +68,8 @@ class MainActivity : ComponentActivity() {
             WorkOrderTheme(
                 themeMode = settings.themeMode,
                 themePresetName = settings.themePreset,
-                dynamicColor = settings.dynamicColor
+                dynamicColor = settings.dynamicColor,
+                interfaceScale = settings.interfaceScale
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

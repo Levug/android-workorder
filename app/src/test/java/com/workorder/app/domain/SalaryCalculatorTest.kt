@@ -10,6 +10,18 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class SalaryCalculatorTest {
+    @Test fun planningDoesNotChangeSalaryOrForecastButRecordedZeroDoes() {
+        val month = YearMonth.of(2026, 7)
+        val preferences = Settings(hourlyRate = 100.0, contractHourlyRate = 50.0)
+        val plan = WorkDay(date = "2026-07-01", totalHours = 0.0, specialization = "Наладка", isRecorded = false)
+        assertEquals(SalaryCalculator.calculate(emptyList(), preferences, 184.0),
+            SalaryCalculator.calculate(listOf(plan), preferences, 184.0))
+        val originalForecast = SalaryCalculator.forecast(month, emptyList(), preferences, 184.0)
+        assertEquals(originalForecast, SalaryCalculator.forecast(month, listOf(plan), preferences, 184.0))
+        val explicitZero = SalaryCalculator.forecast(month, listOf(plan.copy(isRecorded = true)), preferences, 184.0)
+        assertEquals(originalForecast.fullSalary - 800.0, explicitZero.fullSalary, 0.0)
+    }
+
     private val settings = Settings(
         hourlyRate = 100.0,
         contractHourlyRate = 50.0,

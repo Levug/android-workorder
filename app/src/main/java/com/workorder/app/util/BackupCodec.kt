@@ -31,7 +31,7 @@ object BackupCodec {
         val root = JsonObject().apply {
             addProperty("format", if (kind == TransferKind.FULL_DATABASE) FULL_FORMAT else CONFIG_FORMAT)
             addProperty("formatVersion", 1)
-            addProperty("databaseVersion", 9)
+            addProperty("databaseVersion", 11)
             addProperty("createdAt", Instant.now().toString())
             add("operations", gson.toJsonTree(data.operations))
             add("settings", gson.toJsonTree(data.settings))
@@ -55,8 +55,10 @@ object BackupCodec {
         }
         if (format != null) {
             require(root.int("formatVersion") == 1) { "Версия формата не поддерживается. Обновите приложение." }
-            require(root.int("databaseVersion") in 1..9) { "Копия из более новой версии приложения." }
+            require(root.int("databaseVersion") in 1..11) { "Копия из более новой версии приложения." }
         }
+        val newFieldsRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 10
+        val recordingStateRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 11
         val operations = root.objects("operations").map { op ->
             Operation(
                 id = op.long("id", if (full) null else 0L),
@@ -77,14 +79,18 @@ object BackupCodec {
                 defaultDayHours = s.number("defaultDayHours", if (full) null else 8.0),
                 contractHourlyRate = s.number("contractHourlyRate", if (full) null else 0.0),
                 workSchedule = enumValueOf(s.text("workSchedule", if (full) null else "FIVE_TWO")),
-                shiftAnchorDate = s.text("shiftAnchorDate", if (full) null else "2026-01-01")
+                shiftAnchorDate = s.text("shiftAnchorDate", if (full) null else "2026-01-01"),
+                interfaceScale = s.number("interfaceScale", if (newFieldsRequired) null else 1.0),
+                daySpecializationEnabled = s.bool("daySpecializationEnabled", if (newFieldsRequired) null else false)
             )
         }
         val data = BackupSnapshot(
             operations = operations,
             settings = settings,
             workDays = if (!full) emptyList() else root.objects("workDays").map { d ->
-                WorkDay(d.long("id"), d.text("date"), d.number("totalHours"), d.text("comment"), enumValueOf(d.text("dayType")))
+                WorkDay(d.long("id"), d.text("date"), d.number("totalHours"), d.text("comment"), enumValueOf(d.text("dayType")),
+                    d.text("specialization", if (newFieldsRequired) null else ""),
+                    d.bool("isRecorded", if (recordingStateRequired) null else true))
             },
             entries = if (!full) emptyList() else root.objects("entries").map { e ->
                 require(e.has("sourceEventId")) { "Отсутствует sourceEventId" }
@@ -117,6 +123,7 @@ object BackupCodec {
             require(it.id == 1) { "Некорректный ID настроек" }
             nonNegative(it.hourlyRate); nonNegative(it.contractHourlyRate); nonNegative(it.defaultDayHours)
             require(it.defaultDayHours > 0) { "Продолжительность смены должна быть положительной" }
+            require(it.interfaceScale.isFinite() && it.interfaceScale in 0.85..1.3) { "Масштаб должен быть от 85 до 130%" }
             date(it.shiftAnchorDate)
         }
         if (!full) return
@@ -125,8 +132,12 @@ object BackupCodec {
         unique(data.monthlyPlans.map { it.yearMonth })
         unique(data.bankAllocations.map { it.yearMonth to it.operationId })
         val operationIds = data.operations.map { it.id }.toSet()
-        val dayIds = data.workDays.map { it.id }.toSet()
-        data.workDays.forEach { require(it.id > 0); date(it.date); nonNegative(it.totalHours) }
+        val dayIds = data.workDays.filter { it.isRecorded }.map { it.id }.toSet()
+        data.workDays.forEach {
+            require(it.id > 0); date(it.date); nonNegative(it.totalHours)
+            require(it.specialization.length <= 120) { "Специализация: не более 120 символов" }
+            require(it.isRecorded || it.totalHours == 0.0) { "План специализации не должен содержать часы присутствия" }
+        }
         data.entries.forEach {
             require(it.id > 0 && it.createdAt >= 0) { "Некорректная запись журнала" }
             require(it.workDayId in dayIds && it.operationId in operationIds) { "Журнал ссылается на отсутствующий день или операцию" }

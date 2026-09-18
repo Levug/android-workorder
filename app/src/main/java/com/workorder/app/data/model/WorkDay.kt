@@ -1,6 +1,7 @@
 package com.workorder.app.data.model
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -21,5 +22,10 @@ data class WorkDay(
     val totalHours: Double,
     val comment: String = "",
     /** AUTO — определяется графиком; REGULAR — принудительно обычный; HOLIDAY — всегда ×2. */
-    val dayType: WorkDayType = WorkDayType.AUTO
+    val dayType: WorkDayType = WorkDayType.AUTO,
+    @ColumnInfo(defaultValue = "''")
+    val specialization: String = "",
+    /** False: calendar planning only, with no attendance or operation entries. */
+    @ColumnInfo(defaultValue = "1")
+    val isRecorded: Boolean = true
 )

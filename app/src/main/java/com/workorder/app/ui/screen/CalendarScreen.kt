@@ -1,6 +1,7 @@
 package com.workorder.app.ui.screen
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Today
+import androidx.compose.material.icons.outlined.Flip
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -21,6 +24,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -40,6 +49,10 @@ fun CalendarScreen(
     onNavigateToDay: (String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var showSpecialization by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(uiState.settings.daySpecializationEnabled) {
+        if (!uiState.settings.daySpecializationEnabled) showSpecialization = false
+    }
 
     Scaffold(
         topBar = {
@@ -78,14 +91,43 @@ fun CalendarScreen(
                 }
             }
 
+            if (uiState.settings.daySpecializationEnabled) {
+                OutlinedButton(
+                    onClick = { showSpecialization = !showSpecialization },
+                    modifier = Modifier.fillMaxWidth().semantics {
+                        stateDescription = if (showSpecialization) "Показаны специализации" else "Показаны часы"
+                    }
+                ) {
+                    Icon(Icons.Outlined.Flip, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                    Text(if (showSpecialization) "Показать часы" else "Показать специализации")
+                }
+            }
+
             CalendarGrid(
                 month = uiState.month,
                 days = uiState.days,
                 settings = uiState.settings,
+                showSpecialization = showSpecialization,
                 onDayClick = { date ->
                     onNavigateToDay(date.format(DateTimeFormatter.ISO_LOCAL_DATE))
                 }
             )
+
+            if (uiState.settings.daySpecializationEnabled && showSpecialization) {
+                val specializedDays = uiState.days.toSortedMap().filterValues { it.specialization.isNotBlank() }
+                SectionCard {
+                    Text("Специализации за месяц", style = MaterialTheme.typography.titleMedium)
+                    if (specializedDays.isEmpty()) Text("Открой день и задай специализацию текстом в наряде.",
+                        style = MaterialTheme.typography.bodySmall)
+                    specializedDays.forEach { (date, day) ->
+                        Row(Modifier.fillMaxWidth().clickable { onNavigateToDay(date.toString()) }.padding(vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(date.format(DateTimeFormatter.ofPattern("dd.MM")), style = MaterialTheme.typography.labelLarge)
+                            Text(day.specialization, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+            }
 
             SectionCard {
                 Row(modifier = Modifier.fillMaxWidth()) {

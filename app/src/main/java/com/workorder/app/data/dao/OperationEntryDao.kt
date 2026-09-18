@@ -41,7 +41,7 @@ interface OperationEntryDao {
         FROM work_days wd
         LEFT JOIN operation_entries oe ON oe.workDayId = wd.id
         LEFT JOIN operations op ON op.id = oe.operationId
-        WHERE wd.date LIKE :yearMonth || '-%'
+        WHERE wd.date LIKE :yearMonth || '-%' AND wd.isRecorded = 1
         GROUP BY wd.date ORDER BY wd.date
     """)
     fun observeDailyProducedHours(yearMonth: String): Flow<List<DailyProducedHours>>
@@ -81,7 +81,7 @@ interface OperationEntryDao {
         FROM operation_entries oe
         INNER JOIN operations op ON op.id = oe.operationId
         INNER JOIN work_days wd ON wd.id = oe.workDayId
-        WHERE wd.date LIKE :yearMonth || '-%'
+        WHERE wd.date LIKE :yearMonth || '-%' AND wd.isRecorded = 1
         GROUP BY op.id
         HAVING SUM(oe.quantity) <> 0
         ORDER BY op.sortOrder ASC, op.name COLLATE NOCASE ASC

@@ -2,6 +2,8 @@ package com.workorder.app.ui.viewmodel
 
 import android.net.Uri
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
@@ -21,11 +23,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
-    private val exportImportManager: ExportImportManager
+    private val exportImportManager: ExportImportManager,
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle()
 ) : ViewModel() {
 
     val settings: StateFlow<Settings> = settingsRepository.observe()
@@ -34,6 +38,61 @@ class SettingsViewModel(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = Settings()
         )
+
+    private val edits = MutableStateFlow<Map<String, String>>(savedStateHandle.get<HashMap<String, String>>("settingsEdits") ?: emptyMap())
+    val form = combine(settingsRepository.observe(), edits) { stored, draft -> SettingsForm(stored, draft) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    private val _savingForm = MutableStateFlow(false)
+    val savingForm = _savingForm.asStateFlow()
+
+    fun edit(field: String, text: String) {
+        if (_savingForm.value) return
+        val base = form.value?.stored ?: return
+        val updated = edits.value.toMutableMap()
+        if (text == SettingsForm(base, emptyMap()).text(field)) updated.remove(field) else updated[field] = text
+        setEdits(updated)
+    }
+
+    private fun setEdits(value: Map<String, String>) {
+        edits.value = value
+        savedStateHandle["settingsEdits"] = HashMap(value)
+    }
+
+    fun discardForm() { if (!_savingForm.value) setEdits(emptyMap()) }
+
+    fun saveForm() {
+        val snapshot = form.value ?: return
+        if (!snapshot.dirty || !snapshot.valid || _savingForm.value) return
+        _savingForm.value = true
+        viewModelScope.launch {
+            try {
+                settingsRepository.update(snapshot::applyTo)
+                setEdits(emptyMap())
+                _message.value = "Настройки сохранены"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _message.value = "Не удалось сохранить настройки. Попробуйте ещё раз."
+            } finally {
+                _savingForm.value = false
+            }
+        }
+    }
+
+    fun setInterfaceScale(scale: Double) {
+        if (!scale.isFinite() || scale !in 0.85..1.3) return
+        updateAppearance { it.copy(interfaceScale = scale) }
+    }
+
+    fun setDaySpecializationEnabled(enabled: Boolean) = updateAppearance { it.copy(daySpecializationEnabled = enabled) }
+
+    private fun updateAppearance(transform: (Settings) -> Settings) {
+        viewModelScope.launch {
+            try { settingsRepository.update(transform) }
+            catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _message.value = "Не удалось сохранить настройку. Попробуйте ещё раз." }
+        }
+    }
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
@@ -68,15 +127,15 @@ class SettingsViewModel(
     }
 
     fun setThemeMode(mode: ThemeMode) {
-        viewModelScope.launch { settingsRepository.update { it.copy(themeMode = mode) } }
+        updateAppearance { it.copy(themeMode = mode) }
     }
 
     fun setThemePreset(preset: String) {
-        viewModelScope.launch { settingsRepository.update { it.copy(themePreset = preset) } }
+        updateAppearance { it.copy(themePreset = preset) }
     }
 
     fun setDynamicColor(enabled: Boolean) {
-        viewModelScope.launch { settingsRepository.update { it.copy(dynamicColor = enabled) } }
+        updateAppearance { it.copy(dynamicColor = enabled) }
     }
 
     fun prepareExport(kind: TransferKind) = transfer {
@@ -101,6 +160,7 @@ class SettingsViewModel(
     fun confirmImport() = transfer {
         val prepared = checkNotNull(_pendingImport.value)
         exportImportManager.importData(prepared)
+        setEdits(emptyMap())
         _pendingImport.value = null
         _message.value = if (prepared.kind == TransferKind.FULL_DATABASE) "База восстановлена. Предыдущая база сохранена в страховочной копии."
             else "Операции и настройки импортированы. Журнал сохранён."
@@ -137,7 +197,8 @@ class SettingsViewModel(
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as WorkOrderApp
                 SettingsViewModel(
                     settingsRepository = app.container.settingsRepository,
-                    exportImportManager = app.container.exportImportManager
+                    exportImportManager = app.container.exportImportManager,
+                    savedStateHandle = createSavedStateHandle()
                 )
             }
         }

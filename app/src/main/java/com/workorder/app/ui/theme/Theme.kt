@@ -9,6 +9,9 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -43,6 +46,7 @@ fun WorkOrderTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     themePresetName: String = "DEFAULT",
     dynamicColor: Boolean = false,
+    interfaceScale: Double = 1.0,
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {
@@ -72,10 +76,14 @@ fun WorkOrderTheme(
         }
     }
 
-    MaterialTheme(
+    val density = LocalDensity.current
+    val scale = if (interfaceScale.isFinite()) interfaceScale.coerceIn(0.85, 1.3).toFloat() else 1f
+    CompositionLocalProvider(LocalDensity provides Density(density.density * scale, density.fontScale)) {
+      MaterialTheme(
         colorScheme = colorScheme,
         typography = WorkOrderTypography,
         shapes = WorkOrderShapes,
         content = content
-    )
+      )
+    }
 }

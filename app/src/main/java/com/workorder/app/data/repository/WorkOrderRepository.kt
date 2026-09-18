@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 /**
  * Единая точка доступа к нарядам: рабочие дни + журнал партий.
@@ -36,6 +37,9 @@ class WorkOrderRepository(
     fun observeDay(date: String): Flow<WorkDay?> = workDayDao.observeByDate(date)
 
     fun observeMonth(yearMonth: String): Flow<List<WorkDay>> = workDayDao.observeByMonth(yearMonth)
+
+    fun observeRecordedMonth(yearMonth: String): Flow<List<WorkDay>> =
+        observeMonth(yearMonth).map { days -> days.filter { it.isRecorded } }
 
     fun observeDayTotals(date: String): Flow<List<OperationTotal>> =
         workDayDao.observeByDate(date).flatMapLatest { day ->
@@ -107,12 +111,13 @@ class WorkOrderRepository(
     suspend fun removeEntry(entryId: Long) = entryDao.deleteById(entryId)
 
     suspend fun setDayHours(date: String, hours: Double) {
+        require(hours.isFinite() && hours >= 0) { "Некорректное количество часов" }
         db.withTransaction {
             val day = workDayDao.getByDate(date)
             if (day == null) {
                 workDayDao.insert(WorkDay(date = date, totalHours = hours))
             } else {
-                workDayDao.update(day.copy(totalHours = hours))
+                workDayDao.update(day.copy(totalHours = hours, isRecorded = true))
             }
         }
     }
@@ -125,6 +130,21 @@ class WorkOrderRepository(
                 workDayDao.insert(WorkDay(date = date, totalHours = hours, comment = comment))
             } else {
                 workDayDao.update(day.copy(comment = comment))
+            }
+        }
+    }
+
+    suspend fun setDaySpecialization(date: String, specialization: String) {
+        require(specialization.length <= 120) { "Специализация: не более 120 символов" }
+        val text = specialization.trim()
+        db.withTransaction {
+            val day = workDayDao.getByDate(date)
+            if (day == null) {
+                if (text.isNotEmpty()) workDayDao.insert(
+                    WorkDay(date = date, totalHours = 0.0, specialization = text, isRecorded = false)
+                )
+            } else {
+                workDayDao.update(day.copy(specialization = text))
             }
         }
     }
@@ -150,7 +170,12 @@ class WorkOrderRepository(
 
     private suspend fun getOrCreateDayId(date: String, defaultHours: Double): Long {
         val existing = workDayDao.getByDate(date)
-        if (existing != null) return existing.id
+        if (existing != null) {
+            if (!existing.isRecorded) {
+                workDayDao.update(existing.copy(totalHours = defaultHours, isRecorded = true))
+            }
+            return existing.id
+        }
         val insertedId = workDayDao.insert(WorkDay(date = date, totalHours = defaultHours))
         // OnConflictStrategy.IGNORE возвращает -1, если день успел появиться параллельно
         return if (insertedId != -1L) insertedId else checkNotNull(workDayDao.getByDate(date)).id

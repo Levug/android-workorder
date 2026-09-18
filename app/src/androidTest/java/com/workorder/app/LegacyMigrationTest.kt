@@ -18,6 +18,8 @@ import org.junit.runner.RunWith
 class LegacyMigrationTest {
     @Test fun versionThreeDatabaseSurvivesUpgrade() = verifyMigration(7)
     @Test fun versionThreeOneDatabaseSurvivesUpgrade() = verifyMigration(8)
+    @Test fun versionThreeFourDatabaseSurvivesUpgrade() = verifyMigration(9)
+    @Test fun versionThreeFiveDatabaseSurvivesUpgrade() = verifyMigration(10)
 
     private fun verifyMigration(version: Int) = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -44,6 +46,7 @@ class LegacyMigrationTest {
             legacy.execSQL("INSERT INTO settings (id,hourlyRate,themeMode,themePreset,dynamicColor,defaultDayHours,contractHourlyRate,workSchedule,shiftAnchorDate) VALUES (1,345.5,'DARK','AMBER',0,8.5,100,'TWO_TWO','2026-07-01')")
             legacy.execSQL("INSERT INTO monthly_plans (yearMonth,plannedHours,coefficient,strategy${if (version >= 8) ",grade3Percent,grade4Percent,grade5Percent,grade6Percent" else ""}) VALUES ('2026-07',184,1.15,'PRIORITY'${if (version >= 8) ",10,20,30,40" else ""})")
             legacy.execSQL("INSERT INTO bank_allocations (yearMonth,operationId,bankedQuantity) VALUES ('2026-07',42,3)")
+            if (version >= 10) legacy.execSQL("UPDATE work_days SET specialization = 'Наладка'")
             legacy.version = version
         }
         val migrated = Room.databaseBuilder(context, AppDatabase::class.java, name)
@@ -59,6 +62,11 @@ class LegacyMigrationTest {
             assertEquals("Не потерять заметку", data.workDays.single().comment)
             assertEquals(11.5, data.workDays.single().totalHours, 0.0)
             assertEquals(345.5, data.settings!!.hourlyRate, 0.0)
+            assertEquals(1.0, data.settings!!.interfaceScale, 0.0)
+            assertFalse(data.settings!!.daySpecializationEnabled)
+            assertEquals(if (version >= 10) "Наладка" else "", data.workDays.single().specialization)
+            assertTrue(data.workDays.single().isRecorded)
+            assertEquals(11, migrated.openHelper.readableDatabase.version)
             assertEquals(3, data.bankAllocations.single().bankedQuantity)
             assertEquals(if (version >= 8) 10.0 else 25.0, data.monthlyPlans.single().grade3Percent, 0.0)
             migrated.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { assertEquals(0, it.count) }

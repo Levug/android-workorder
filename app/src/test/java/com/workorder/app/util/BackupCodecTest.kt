@@ -9,8 +9,8 @@ class BackupCodecTest {
     private val full = TransferKind.FULL_DATABASE
     private val sample = BackupSnapshot(
         operations = listOf(Operation(71, "Длинная операция \"А\" / Б", 0.375, 6, 3)),
-        settings = Settings(hourlyRate = 423.5, workSchedule = WorkSchedule.TWO_TWO, shiftAnchorDate = "2026-09-03"),
-        workDays = listOf(WorkDay(12, "2026-09-04", 11.5, "Многострочная\nзаметка", WorkDayType.HOLIDAY)),
+        settings = Settings(hourlyRate = 423.5, workSchedule = WorkSchedule.TWO_TWO, shiftAnchorDate = "2026-09-03", interfaceScale = 1.15, daySpecializationEnabled = true),
+        workDays = listOf(WorkDay(12, "2026-09-04", 11.5, "Многострочная\nзаметка", WorkDayType.HOLIDAY, "Наладка и сборка")),
         entries = listOf(OperationEntry(81, 12, 71, 17, 1788530000123L, "watch-uuid"), OperationEntry(82, 12, 71, -2, 1788530000999L)),
         monthlyPlans = listOf(MonthlyPlan("2026-09", 184.0, 1.15, BankStrategy.GRADE_RATIO, 40.0, 30.0, 20.0, 10.0)),
         bankAllocations = listOf(BankAllocation("2026-08", 71, 7), BankAllocation("2026-09", 71, -3))
@@ -49,10 +49,53 @@ class BackupCodecTest {
     @Test fun rejectsWrongFormatAndFutureVersion() {
         assertRejected { it.addProperty("format", "unknown") }
         assertRejected { it.addProperty("formatVersion", 2) }
-        assertRejected { it.addProperty("databaseVersion", 10) }
+        assertRejected { it.addProperty("databaseVersion", 12) }
         assertThrows(IllegalArgumentException::class.java) {
             BackupCodec.decode("""{"operations":[],"settings":null}""", full)
         }
+    }
+
+    @Test fun version34BackupReceivesDefaultsWithoutLosingHistory() {
+        val root = JsonParser.parseString(BackupCodec.encode(sample, full)).asJsonObject
+        root.addProperty("databaseVersion", 9)
+        root.getAsJsonObject("settings").remove("interfaceScale")
+        root.getAsJsonObject("settings").remove("daySpecializationEnabled")
+        root.getAsJsonArray("workDays")[0].asJsonObject.remove("specialization")
+        val restored = BackupCodec.decode(root.toString(), full)
+        assertEquals(sample.entries, restored.entries)
+        assertEquals(1.0, restored.settings!!.interfaceScale, 0.0)
+        assertFalse(restored.settings!!.daySpecializationEnabled)
+        assertEquals("", restored.workDays.single().specialization)
+    }
+
+    @Test fun newFieldsAreValidated() {
+        assertRejected { it.getAsJsonArray("workDays")[0].asJsonObject.remove("isRecorded") }
+        assertRejected { it.getAsJsonArray("workDays")[0].asJsonObject.addProperty("isRecorded", "false") }
+        assertRejected { it.getAsJsonObject("settings").addProperty("interfaceScale", 5) }
+        assertRejected { it.getAsJsonObject("settings").remove("interfaceScale") }
+        assertRejected { it.getAsJsonObject("settings").remove("daySpecializationEnabled") }
+        assertRejected { it.getAsJsonArray("workDays")[0].asJsonObject.remove("specialization") }
+        assertRejected { it.getAsJsonArray("workDays")[0].asJsonObject.addProperty("specialization", "x".repeat(121)) }
+    }
+
+    @Test fun plannedSpecializationsRoundTripWithoutBecomingAttendance() {
+        val planned = WorkDay(99, "2026-09-16", 0.0, specialization = "Наладка", isRecorded = false)
+        val data = sample.copy(workDays = sample.workDays + planned)
+        assertEquals(data, BackupCodec.decode(BackupCodec.encode(data, full), full))
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.encode(data.copy(workDays = sample.workDays + planned.copy(totalHours = 8.0)), full)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.encode(data.copy(entries = sample.entries + OperationEntry(99, 99, 71, 1, 123)), full)
+        }
+    }
+
+    @Test fun version35BackupKeepsRecordedZeroHoursAndSpecialization() {
+        val data = sample.copy(workDays = sample.workDays.map { it.copy(totalHours = 0.0) })
+        val root = JsonParser.parseString(BackupCodec.encode(data, full)).asJsonObject
+        root.addProperty("databaseVersion", 10)
+        root.getAsJsonArray("workDays").forEach { it.asJsonObject.remove("isRecorded") }
+        assertEquals(data, BackupCodec.decode(root.toString(), full))
     }
 
     @Test fun invalidNumbersDoNotSilentlyTruncateOrBecomeZero() {

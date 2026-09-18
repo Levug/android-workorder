@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
@@ -53,6 +58,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -89,9 +95,14 @@ fun WorkDayScreen(
     var quantityFor by remember { mutableStateOf<Operation?>(null) }
     var showHoursDialog by remember { mutableStateOf(false) }
     var showCommentDialog by remember { mutableStateOf(false) }
+    var showSpecializationDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    LaunchedEffect(error) {
+        error?.let { snackbarHostState.showSnackbar(it); viewModel.consumeError() }
+    }
 
     LaunchedEffect(batchAdded) {
         val event = batchAdded ?: return@LaunchedEffect
@@ -154,11 +165,13 @@ fun WorkDayScreen(
                 .padding(padding)
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp),
+                modifier = Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.42f).dp)
+                    .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 DayHeaderCard(
                     hours = uiState.dayHours,
+                    isRecorded = uiState.isRecorded,
                     units = uiState.totalUnits,
                     producedHours = uiState.producedHours,
                     comment = uiState.comment,
@@ -167,6 +180,16 @@ fun WorkDayScreen(
                     onCommentClick = { showCommentDialog = true },
                     onDayTypeChange = viewModel::setDayType
                 )
+
+                if (uiState.specializationEnabled) {
+                    SectionCard(modifier = Modifier.clickable { showSpecializationDialog = true }) {
+                        Text("Специализация дня", style = MaterialTheme.typography.labelLarge)
+                        Text(uiState.specialization.ifBlank { "Добавить специализацию" },
+                            style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (!uiState.isRecorded) Text("План · смена ещё не отмечена",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
 
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     SegmentedButton(
@@ -247,6 +270,22 @@ fun WorkDayScreen(
         )
     }
 
+    if (showSpecializationDialog && uiState.specializationEnabled) {
+        var text by rememberSaveable { mutableStateOf(uiState.specialization) }
+        AlertDialog(
+            onDismissRequest = { showSpecializationDialog = false },
+            title = { Text("Специализация дня") },
+            text = {
+                OutlinedTextField(text, { if (it.length <= 120) text = it },
+                    label = { Text("Например: сборка, наладка") },
+                    supportingText = { Text("${text.length}/120 · Пустое поле удалит подпись. Сохранение специализации не добавляет часов и не отмечает смену.") },
+                    modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4)
+            },
+            confirmButton = { TextButton(onClick = { viewModel.setSpecialization(text) { showSpecializationDialog = false } }) { Text("Сохранить") } },
+            dismissButton = { TextButton(onClick = { showSpecializationDialog = false }) { Text("Отмена") } }
+        )
+    }
+
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -274,9 +313,11 @@ fun WorkDayScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DayHeaderCard(
     hours: Double,
+    isRecorded: Boolean,
     units: Int,
     producedHours: Double,
     comment: String,
@@ -292,8 +333,8 @@ private fun DayHeaderCard(
         ) {
             Row(modifier = Modifier.weight(1f).clickable(onClick = onHoursClick)) {
                 StatCell(
-                    value = hours.formatNumber(),
-                    label = "часов ✎",
+                    value = if (isRecorded) hours.formatNumber() else "—",
+                    label = if (isRecorded) "часов ✎" else "указать часы ✎",
                     valueColor = MaterialTheme.colorScheme.primary
                 )
             }
@@ -307,10 +348,7 @@ private fun DayHeaderCard(
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
+        FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(
                 WorkDayType.AUTO to "По графику",
                 WorkDayType.REGULAR to "Рабочий",

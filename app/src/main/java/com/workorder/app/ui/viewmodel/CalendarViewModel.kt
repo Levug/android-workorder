@@ -46,8 +46,8 @@ class CalendarViewModel(
             CalendarUiState(
                 month = m,
                 days = days.associateBy { LocalDate.parse(it.date) },
-                workedDays = days.size,
-                workedHours = days.sumOf { it.totalHours },
+                workedDays = days.count { it.isRecorded },
+                workedHours = days.filter { it.isRecorded }.sumOf { it.totalHours },
                 settings = settings
             )
         }

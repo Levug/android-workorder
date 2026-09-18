@@ -1,6 +1,7 @@
 package com.workorder.app.data.model
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.PrimaryKey
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -20,5 +21,9 @@ data class Settings(
     val contractHourlyRate: Double = 0.0,
     val workSchedule: WorkSchedule = WorkSchedule.FIVE_TWO,
     /** Первая рабочая смена цикла 2/2, ISO yyyy-MM-dd. */
-    val shiftAnchorDate: String = "2026-01-01"
+    val shiftAnchorDate: String = "2026-01-01",
+    @ColumnInfo(defaultValue = "1.0")
+    val interfaceScale: Double = 1.0,
+    @ColumnInfo(defaultValue = "0")
+    val daySpecializationEnabled: Boolean = false
 )

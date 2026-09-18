@@ -35,8 +35,11 @@ data class WorkDayUiState(
     val date: LocalDate,
     val isToday: Boolean = false,
     val dayExists: Boolean = false,
+    val isRecorded: Boolean = false,
     val dayHours: Double = WorkOrderRepository.DEFAULT_DAY_HOURS,
     val comment: String = "",
+    val specialization: String = "",
+    val specializationEnabled: Boolean = false,
     val dayType: WorkDayType = WorkDayType.AUTO,
     val totals: List<OperationTotal> = emptyList(),
     val entries: List<EntryWithOperation> = emptyList(),
@@ -72,8 +75,11 @@ class WorkDayViewModel(
             date = date,
             isToday = date == LocalDate.now(),
             dayExists = day != null,
+            isRecorded = day?.isRecorded == true,
             dayHours = day?.totalHours ?: settings.defaultDayHours,
             comment = day?.comment.orEmpty(),
+            specialization = day?.specialization.orEmpty(),
+            specializationEnabled = settings.daySpecializationEnabled,
             dayType = day?.dayType ?: WorkDayType.AUTO,
             totals = totals,
             entries = entries,
@@ -124,6 +130,23 @@ class WorkDayViewModel(
     fun setComment(comment: String) {
         viewModelScope.launch { workOrderRepository.setDayComment(dateString, comment) }
     }
+
+    fun setSpecialization(text: String, onSaved: () -> Unit = {}) {
+        viewModelScope.launch {
+            try {
+                workOrderRepository.setDaySpecialization(dateString, text)
+                onSaved()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _error.value = "Не удалось сохранить специализацию. Попробуйте ещё раз."
+            }
+        }
+    }
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
+    fun consumeError() { _error.value = null }
 
     fun setDayType(type: WorkDayType) {
         viewModelScope.launch { workOrderRepository.setDayType(dateString, type) }

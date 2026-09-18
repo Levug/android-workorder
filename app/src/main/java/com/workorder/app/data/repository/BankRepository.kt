@@ -54,7 +54,7 @@ class BankRepository(private val db: AppDatabase) {
         },
         workDayDao.observeByMonth(yearMonth)
     ) { state, days ->
-        state.copy(attendanceHours = days.sumOf { it.totalHours })
+        state.copy(attendanceHours = days.filter { it.isRecorded }.sumOf { it.totalHours })
     }
 
     suspend fun updatePlan(

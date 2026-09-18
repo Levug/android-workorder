@@ -31,7 +31,7 @@ object SalaryCalculator {
         settings: Settings,
         plannedHours: Double
     ): SalaryBreakdown {
-        val enteredDays = days.mapNotNull { day ->
+        val enteredDays = days.filter { it.isRecorded }.mapNotNull { day ->
             runCatching { LocalDate.parse(day.date) }.getOrNull()
                 ?.takeIf { YearMonth.from(it) == yearMonth }
                 ?.let { it to day }
@@ -59,7 +59,7 @@ object SalaryCalculator {
                 advance = advanceHours * settings.contractHourlyRate
             )
         }
-        val classified = days.map { day ->
+        val classified = days.filter { it.isRecorded }.map { day ->
             val date = LocalDate.parse(day.date)
             val scheduled = isRegularDay(day, date, settings)
             Triple(day, date, scheduled)
@@ -97,7 +97,7 @@ object SalaryCalculator {
     }
 
     private fun calculateAdvanceHours(days: List<WorkDay>, settings: Settings): Double =
-        days.sumOf { day ->
+        days.filter { it.isRecorded }.sumOf { day ->
             val date = LocalDate.parse(day.date)
             if (date.dayOfMonth <= 15 && isRegularDay(day, date, settings)) {
                 minOf(day.totalHours, settings.defaultDayHours)

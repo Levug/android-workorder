@@ -66,7 +66,7 @@ class ReportViewModel(
     val uiState: StateFlow<ReportUiState> = month.flatMapLatest { m ->
         val ym = m.format(monthFormatter)
         combine(
-            workOrderRepository.observeMonth(ym),
+            workOrderRepository.observeRecordedMonth(ym),
             bankRepository.observe(ym),
             settingsRepository.observe(),
             workOrderRepository.observeDailyProducedHours(ym)

@@ -1,5 +1,7 @@
 package com.workorder.app.ui.component
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,24 +13,32 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.workorder.app.data.model.WorkDay
 import com.workorder.app.data.model.Settings
 import com.workorder.app.data.model.WorkDayType
 import com.workorder.app.domain.SalaryCalculator
+import com.workorder.app.ui.theme.calendarHeatPalette
+import com.workorder.app.ui.theme.supportsDynamicColor
 import com.workorder.app.util.formatNumber
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -45,10 +55,19 @@ fun CalendarGrid(
     days: Map<LocalDate, WorkDay>,
     settings: Settings,
     onDayClick: (LocalDate) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showSpecialization: Boolean = false
 ) {
     val today = LocalDate.now()
-    val heatMax = maxOf(16.0, days.values.maxOfOrNull { it.totalHours } ?: 0.0)
+    val heatMax = maxOf(16.0, days.values.filter { it.isRecorded }.maxOfOrNull { it.totalHours } ?: 0.0)
+    val accent = MaterialTheme.colorScheme.primary.takeIf { settings.dynamicColor && supportsDynamicColor }
+    val palette = remember(settings.themePreset, accent) { calendarHeatPalette(settings.themePreset, accent) }
+    val rotation by animateFloatAsState(
+        targetValue = if (showSpecialization && settings.daySpecializationEnabled) 180f else 0f,
+        animationSpec = tween(440), label = "calendarFlip"
+    )
+    val backVisible = rotation > 90f
+    val cellHeight = if (settings.daySpecializationEnabled) 88.dp else 64.dp
 
     val weeks: List<List<LocalDate?>> = remember(month) {
         val first = month.atDay(1)
@@ -89,6 +108,10 @@ fun CalendarGrid(
                                 date = date,
                                 workDay = days[date],
                                 heatMax = heatMax,
+                                palette = palette,
+                                rotation = rotation,
+                                showSpecialization = backVisible,
+                                cellHeight = cellHeight * LocalDensity.current.fontScale.coerceAtLeast(1f),
                                 isScheduledOff = when (days[date]?.dayType) {
                                     WorkDayType.HOLIDAY -> true
                                     WorkDayType.REGULAR -> false
@@ -105,30 +128,35 @@ fun CalendarGrid(
             }
         }
         Spacer(Modifier.height(8.dp))
+        if (!backVisible) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("0 ч", style = MaterialTheme.typography.labelSmall)
             for (step in 0..4) {
                 Box(Modifier.weight(1f).height(10.dp).clip(MaterialTheme.shapes.small)
-                    .background(attendanceHeatColor(heatMax * step / 4, heatMax, MaterialTheme.colorScheme.primary)))
+                    .background(attendanceHeatColor(heatMax * step / 4, heatMax, palette)))
             }
             Text("${heatMax.formatNumber()} ч", style = MaterialTheme.typography.labelSmall)
         }
         Text("Темнее — больше фактических часов присутствия", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Text("Специализации — план на день, без добавления часов. Нажми на день, чтобы изменить.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
-internal fun attendanceHeatColor(hours: Double, maxHours: Double, accent: Color): Color {
+internal fun attendanceHeatColor(hours: Double, maxHours: Double, heatColors: List<Color> = calendarHeatPalette("DEFAULT")): Color {
     val fraction = if (hours.isFinite() && maxHours.isFinite() && maxHours > 0)
         (hours / maxHours).toFloat().coerceIn(0f, 1f) else 0f
-    // Every RGB channel decreases with attendance; do not interpolate via Oklab,
-    // which can clip channels at the ends of some palettes.
-    fun channel(value: Float): Float {
-        val light = 0.88f + value * 0.12f
-        val dark = value * 0.35f
-        return light + (dark - light) * fraction
-    }
-    return Color(channel(accent.red), channel(accent.green), channel(accent.blue))
+    val position = fraction * (heatColors.size - 1)
+    val index = position.toInt().coerceAtMost(heatColors.lastIndex - 1)
+    val blend = position - index
+    val from = heatColors[index]
+    val to = heatColors[index + 1]
+    // Interpolation within one theme's ramp avoids mixing unrelated accent colours.
+    fun channel(a: Float, b: Float) = a + (b - a) * blend
+    return Color(channel(from.red, to.red), channel(from.green, to.green), channel(from.blue, to.blue))
 }
 
 @Composable
@@ -136,50 +164,69 @@ private fun DayCell(
     date: LocalDate,
     workDay: WorkDay?,
     heatMax: Double,
+    palette: List<Color>,
+    rotation: Float,
+    showSpecialization: Boolean,
+    cellHeight: androidx.compose.ui.unit.Dp,
     isToday: Boolean,
     isScheduledOff: Boolean,
     onClick: () -> Unit
 ) {
-    val filled = workDay != null
+    val filled = workDay?.isRecorded == true
+    val specialization = workDay?.specialization.orEmpty()
     val background = when {
-        filled -> attendanceHeatColor(workDay!!.totalHours, heatMax, MaterialTheme.colorScheme.primary)
-        isScheduledOff -> MaterialTheme.colorScheme.tertiaryContainer
+        showSpecialization && specialization.isNotBlank() -> MaterialTheme.colorScheme.primaryContainer
+        !showSpecialization && filled -> attendanceHeatColor(workDay!!.totalHours, heatMax, palette)
+        isScheduledOff -> MaterialTheme.colorScheme.surfaceContainerHigh
         else -> MaterialTheme.colorScheme.surfaceContainer
     }
     val contentColor = when {
-        filled -> if (background.luminance() > 0.179f) Color.Black else Color.White
-        isScheduledOff -> MaterialTheme.colorScheme.onTertiaryContainer
+        showSpecialization && specialization.isNotBlank() -> MaterialTheme.colorScheme.onPrimaryContainer
+        !showSpecialization && filled -> if (background.luminance() > 0.179f) Color.Black else Color.White
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
     Box(
         modifier = Modifier
-            .aspectRatio(1f)
+            .fillMaxWidth()
+            .height(cellHeight)
+            .testTag("calendar-day-$date")
+            .graphicsLayer {
+                // Switch faces edge-on; subtract 180° so the reverse text isn't mirrored.
+                rotationY = if (showSpecialization) rotation - 180f else rotation
+                cameraDistance = 12.dp.toPx()
+            }
             .clip(MaterialTheme.shapes.small)
             .background(background)
             .semantics(mergeDescendants = true) {
-                contentDescription = "$date: " + (workDay?.let { "${it.totalHours.formatNumber()} фактических часов" }
-                    ?: "нет наряда") + if (isScheduledOff) ", выходной" else ""
+                contentDescription = "$date: " + (if (showSpecialization) {
+                    specialization.ifBlank { "специализация не задана" }
+                } else if (filled) "${workDay!!.totalHours.formatNumber()} фактических часов" else "нет наряда") +
+                    (if (isScheduledOff) ", выходной" else "")
             }
             .then(
                 if (isToday) Modifier.border(
                     width = 2.dp,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = if (filled && !showSpecialization) contentColor else MaterialTheme.colorScheme.primary,
                     shape = MaterialTheme.shapes.small
                 ) else Modifier
             )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = date.dayOfMonth.toString(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = contentColor
             )
-            if (workDay != null) {
+            if (showSpecialization) {
+                Text(specialization.ifBlank { "—" }, style = MaterialTheme.typography.labelSmall,
+                    color = contentColor, maxLines = 3, minLines = 3, overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            } else if (filled) {
                 Text(
-                    text = "${workDay.totalHours.formatNumber()}ч${if (isScheduledOff) " ×2" else ""}",
+                    text = "${workDay!!.totalHours.formatNumber()}ч${if (isScheduledOff) " ×2" else ""}",
                     style = MaterialTheme.typography.labelSmall,
                     color = contentColor
                 )

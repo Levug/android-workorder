@@ -108,7 +108,7 @@ fun DataTransferControls(viewModel: SettingsViewModel) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Операций: ${prepared.data.operations.size}")
                     if (full) {
-                        Text("Нарядов: ${prepared.data.workDays.size} · Записей журнала: ${prepared.data.entries.size}\n" +
+                        Text("Нарядов: ${prepared.data.workDays.count { it.isRecorded }} · Планов: ${prepared.data.workDays.count { !it.isRecorded }} · Записей журнала: ${prepared.data.entries.size}\n" +
                             "Планов месяцев: ${prepared.data.monthlyPlans.size} · Записей банка: ${prepared.data.bankAllocations.size}")
                         Text("Текущие данные будут заменены копией из файла, а не объединены с ней. Сначала дождись синхронизации часов.")
                     } else {
