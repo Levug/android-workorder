@@ -8,11 +8,18 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.workorder.app.BuildConfig
 import com.workorder.app.WorkOrderApp
+import com.workorder.app.sync.PhoneWearSyncManager
+import com.workorder.app.sync.WearConnectionState
+import com.workorder.app.data.model.CUSTOM_THEME_PRESET
 import com.workorder.app.data.model.Settings
 import com.workorder.app.data.model.ThemeMode
 import com.workorder.app.data.model.WorkSchedule
+import com.workorder.app.data.repository.OperationRepository
 import com.workorder.app.data.repository.SettingsRepository
+import com.workorder.app.data.repository.WorkOrderRepository
+import kotlinx.coroutines.flow.map
 import com.workorder.app.util.ExportImportManager
 import com.workorder.app.util.PreparedImport
 import com.workorder.app.util.TransferKind
@@ -29,8 +36,33 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
     private val exportImportManager: ExportImportManager,
-    private val savedStateHandle: SavedStateHandle = SavedStateHandle()
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
+    /** Null в сборках без синхронизации с часами (QA). */
+    private val wearSync: PhoneWearSyncManager? = null,
+    operationRepository: OperationRepository? = null,
+    workOrderRepository: WorkOrderRepository? = null
 ) : ViewModel() {
+
+    /** Сводка раздела «Каталог операций»: активные и архивные. */
+    val operationCounts: StateFlow<Pair<Int, Int>?> = operationRepository?.observeAll()
+        ?.map<List<com.workorder.app.data.model.Operation>, Pair<Int, Int>?> { ops -> ops.count { !it.archived } to ops.count { it.archived } }
+        ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        ?: MutableStateFlow(null)
+
+    /** Текущий баланс отгулов — подсказка под полем начального баланса. */
+    val compTimeBalance: StateFlow<Double?> = workOrderRepository?.observeCompTimeBalance()
+        ?.map<Double, Double?> { it }
+        ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        ?: MutableStateFlow(null)
+
+    val wearState: StateFlow<WearConnectionState>? = wearSync?.state
+
+    fun setWearSyncEnabled(enabled: Boolean) {
+        wearSync?.setEnabled(enabled)
+        if (enabled) wearSync?.refresh()
+    }
+
+    fun refreshWear() { wearSync?.refresh() }
 
     val settings: StateFlow<Settings> = settingsRepository.observe()
         .stateIn(
@@ -138,6 +170,25 @@ class SettingsViewModel(
         updateAppearance { it.copy(dynamicColor = enabled) }
     }
 
+    /** Своя тема из выбранного в палитре цвета; цвета из обоев при этом выключаются. */
+    fun setCustomTheme(argb: Int) {
+        updateAppearance {
+            it.copy(themePreset = CUSTOM_THEME_PRESET, customThemeColor = argb or 0xFF000000.toInt(), dynamicColor = false)
+        }
+    }
+
+    fun setSummaryQuickAddEnabled(enabled: Boolean) = updateAppearance { it.copy(summaryQuickAddEnabled = enabled) }
+
+    fun setAdvanceFillEnabled(enabled: Boolean) = updateAppearance { it.copy(advanceFillEnabled = enabled) }
+
+    fun setBankEnabled(enabled: Boolean) = updateAppearance { it.copy(bankEnabled = enabled) }
+
+    fun setDaySwipeEnabled(enabled: Boolean) = updateAppearance { it.copy(daySwipeEnabled = enabled) }
+
+    fun setCalendarHeatEnabled(enabled: Boolean) = updateAppearance { it.copy(calendarHeatEnabled = enabled) }
+
+    fun setQuickAddEnabled(enabled: Boolean) = updateAppearance { it.copy(quickAddEnabled = enabled) }
+
     fun prepareExport(kind: TransferKind) = transfer {
         _exportFile.value = exportImportManager.prepareExport(kind)
     }
@@ -198,7 +249,10 @@ class SettingsViewModel(
                 SettingsViewModel(
                     settingsRepository = app.container.settingsRepository,
                     exportImportManager = app.container.exportImportManager,
-                    savedStateHandle = createSavedStateHandle()
+                    savedStateHandle = createSavedStateHandle(),
+                    wearSync = app.container.wearSyncManager.takeIf { BuildConfig.ENABLE_WEAR_SYNC },
+                    operationRepository = app.container.operationRepository,
+                    workOrderRepository = app.container.workOrderRepository
                 )
             }
         }

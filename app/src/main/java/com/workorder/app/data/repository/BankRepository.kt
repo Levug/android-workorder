@@ -7,6 +7,7 @@ import com.workorder.app.data.dao.OperationTotal
 import com.workorder.app.data.model.BankAllocation
 import com.workorder.app.data.model.BankStrategy
 import com.workorder.app.data.model.MonthlyPlan
+import com.workorder.app.data.model.fundHours
 import com.workorder.app.data.model.Operation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -54,7 +55,7 @@ class BankRepository(private val db: AppDatabase) {
         },
         workDayDao.observeByMonth(yearMonth)
     ) { state, days ->
-        state.copy(attendanceHours = days.filter { it.isRecorded }.sumOf { it.totalHours })
+        state.copy(attendanceHours = days.sumOf { it.fundHours })
     }
 
     suspend fun updatePlan(
@@ -79,6 +80,21 @@ class BankRepository(private val db: AppDatabase) {
                 grade6Percent = grade6Percent.coerceAtLeast(0.0)
             )
         )
+    }
+
+    /** Точечное изменение плана месяца без затирания остальных параметров. */
+    suspend fun updatePlan(yearMonth: String, transform: (MonthlyPlan) -> MonthlyPlan) {
+        db.withTransaction {
+            val current = bankDao.getPlan(yearMonth) ?: MonthlyPlan(yearMonth)
+            val next = transform(current)
+            bankDao.upsertPlan(
+                next.copy(
+                    yearMonth = yearMonth,
+                    plannedHours = next.plannedHours.coerceAtLeast(0.0),
+                    coefficient = next.coefficient.coerceAtLeast(0.0)
+                )
+            )
+        }
     }
 
     suspend fun applyAutomatic(state: BankState) {

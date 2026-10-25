@@ -27,7 +27,7 @@ import com.workorder.app.data.model.WorkDay
         MonthlyPlan::class,
         BankAllocation::class
     ],
-    version = 11,
+    version = 16,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -225,9 +225,54 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v12: архив операций вместо удаления истории и настраиваемые быстрые партии. */
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE operations ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE settings ADD COLUMN quickAmounts TEXT NOT NULL DEFAULT '1,5,10,17'")
+            }
+        }
+
+        /** v13: отгулы и ручной режим часов, своя тема, отключаемое быстрое добавление в сводке. */
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE work_days ADD COLUMN manualSingleHours REAL NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE work_days ADD COLUMN manualDoubleHours REAL NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE settings ADD COLUMN customThemeColor INTEGER NOT NULL DEFAULT -12492911")
+                database.execSQL("ALTER TABLE settings ADD COLUMN summaryQuickAddEnabled INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE settings ADD COLUMN compTimeInitialHours REAL NOT NULL DEFAULT 0")
+            }
+        }
+
+        /** v14: экспериментальный расчёт аванса с переработками вместо пропущенных дней. */
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE settings ADD COLUMN advanceFillEnabled INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        /** v15: свой коэффициент ручного дня и отключаемые банк, свайп дней, цвета календаря, быстрые кнопки. */
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE work_days ADD COLUMN manualMultiplier REAL NOT NULL DEFAULT 2")
+                database.execSQL("ALTER TABLE settings ADD COLUMN bankEnabled INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE settings ADD COLUMN daySwipeEnabled INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE settings ADD COLUMN calendarHeatEnabled INTEGER NOT NULL DEFAULT 1")
+                database.execSQL("ALTER TABLE settings ADD COLUMN quickAddEnabled INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
+        /** v16: отгул на часть дня (БС — новое значение dayType, столбец не нужен). */
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE work_days ADD COLUMN compOffHours REAL NOT NULL DEFAULT 0")
+            }
+        }
+
         val ALL_MIGRATIONS = arrayOf(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11
+            MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
+            MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16
         )
 
         fun getDatabase(context: Context): AppDatabase {

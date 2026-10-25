@@ -14,6 +14,10 @@ interface OperationDao {
     @Query("SELECT * FROM operations ORDER BY sortOrder ASC, name COLLATE NOCASE ASC")
     fun observeAll(): Flow<List<Operation>>
 
+    /** Операции для выбора в наряде и на часах: без архивных. */
+    @Query("SELECT * FROM operations WHERE archived = 0 ORDER BY sortOrder ASC, name COLLATE NOCASE ASC")
+    fun observeActive(): Flow<List<Operation>>
+
     @Query("SELECT * FROM operations ORDER BY sortOrder ASC, name COLLATE NOCASE ASC")
     suspend fun getAllOrdered(): List<Operation>
 
@@ -34,6 +38,9 @@ interface OperationDao {
 
     @Update
     suspend fun updateAll(operations: List<Operation>)
+
+    @Query("UPDATE operations SET archived = :archived WHERE id = :id")
+    suspend fun setArchived(id: Long, archived: Boolean)
 
     @Delete
     suspend fun delete(operation: Operation)

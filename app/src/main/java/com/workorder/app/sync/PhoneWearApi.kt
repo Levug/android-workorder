@@ -3,6 +3,7 @@ package com.workorder.app.sync
 import android.content.Context
 import android.net.Uri
 import com.google.android.gms.common.api.GoogleApiClient
+import com.google.android.gms.wearable.CapabilityApi
 import com.google.android.gms.wearable.DataApi
 import com.google.android.gms.wearable.Node
 import com.google.android.gms.wearable.PutDataRequest
@@ -27,6 +28,16 @@ class PhoneWearApi(context: Context) {
         val result = Wearable.NodeApi.getConnectedNodes(client).await(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         check(result.status.isSuccess) { "Unable to get Wear nodes: ${result.status}" }
         result.nodes
+    }
+
+    /** Узлы, где установлено приложение с этой возможностью и которые сейчас на связи. */
+    suspend fun reachableNodesWithCapability(capability: String): Set<String> = withContext(Dispatchers.IO) {
+        ensureConnected()
+        val result = Wearable.CapabilityApi
+            .getCapability(client, capability, CapabilityApi.FILTER_REACHABLE)
+            .await(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        check(result.status.isSuccess) { "Unable to get Wear capability: ${result.status}" }
+        result.capability.nodes.map { it.id }.toSet()
     }
 
     suspend fun addDataListener(listener: DataApi.DataListener) = withContext(Dispatchers.IO) {

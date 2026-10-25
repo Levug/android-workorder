@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Фон окна до первого кадра интерфейса: цвет темы и иконка по центру.
+    Без иконки холодный запуск выглядит как вспышка пустого тёмного экрана.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/window_background" />
+    <item
+        android:drawable="@drawable/ic_launcher_foreground"
+        android:gravity="center"
+        android:width="160dp"
+        android:height="160dp" />
+</layer-list>

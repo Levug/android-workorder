@@ -49,7 +49,7 @@ class BackupCodecTest {
     @Test fun rejectsWrongFormatAndFutureVersion() {
         assertRejected { it.addProperty("format", "unknown") }
         assertRejected { it.addProperty("formatVersion", 2) }
-        assertRejected { it.addProperty("databaseVersion", 12) }
+        assertRejected { it.addProperty("databaseVersion", 17) }
         assertThrows(IllegalArgumentException::class.java) {
             BackupCodec.decode("""{"operations":[],"settings":null}""", full)
         }
@@ -96,6 +96,101 @@ class BackupCodecTest {
         root.addProperty("databaseVersion", 10)
         root.getAsJsonArray("workDays").forEach { it.asJsonObject.remove("isRecorded") }
         assertEquals(data, BackupCodec.decode(root.toString(), full))
+    }
+
+    @Test fun archiveAndQuickAmountsRoundTrip() {
+        val data = sample.copy(
+            operations = sample.operations + Operation(72, "Старая операция", 0.5, 4, 4, archived = true),
+            settings = sample.settings!!.copy(quickAmounts = "2,4,8,16")
+        )
+        assertEquals(data, BackupCodec.decode(BackupCodec.encode(data, full), full))
+        assertRejected { it.getAsJsonObject("settings").addProperty("quickAmounts", "1,2,3,4,5,6,7") }
+        assertRejected { it.getAsJsonObject("settings").remove("quickAmounts") }
+        assertRejected { it.getAsJsonArray("operations")[0].asJsonObject.remove("archived") }
+    }
+
+    @Test fun version36BackupGetsActiveOperationsAndDefaultQuickAmounts() {
+        val root = JsonParser.parseString(BackupCodec.encode(sample, full)).asJsonObject
+        root.addProperty("databaseVersion", 11)
+        root.getAsJsonArray("operations").forEach { it.asJsonObject.remove("archived") }
+        root.getAsJsonObject("settings").remove("quickAmounts")
+        val restored = BackupCodec.decode(root.toString(), full)
+        assertFalse(restored.operations.single().archived)
+        assertEquals(DEFAULT_QUICK_AMOUNTS, restored.settings!!.quickAmounts)
+        assertEquals(sample.entries, restored.entries)
+    }
+
+    @Test fun compTimeManualHoursAndCustomThemeRoundTrip() {
+        val data = sample.copy(
+            settings = sample.settings!!.copy(themePreset = CUSTOM_THEME_PRESET, customThemeColor = 0xFFE53935.toInt(),
+                summaryQuickAddEnabled = false, compTimeInitialHours = 12.5, advanceFillEnabled = true,
+                bankEnabled = false, daySwipeEnabled = false, calendarHeatEnabled = false, quickAddEnabled = false),
+            workDays = sample.workDays + listOf(
+                WorkDay(13, "2026-09-05", 8.0, dayType = WorkDayType.COMP_WORK),
+                WorkDay(14, "2026-09-07", 8.0, dayType = WorkDayType.COMP_OFF),
+                WorkDay(16, "2026-09-09", 4.0, compOffHours = 4.0),
+                WorkDay(17, "2026-09-10", 0.0, dayType = WorkDayType.UNPAID, isRecorded = false),
+                WorkDay(15, "2026-09-08", 10.0, dayType = WorkDayType.MANUAL, manualSingleHours = 7.0, manualDoubleHours = 3.0,
+                    manualMultiplier = 1.75)
+            )
+        )
+        assertEquals(data, BackupCodec.decode(BackupCodec.encode(data, full), full))
+    }
+
+    @Test fun version37BackupGetsDefaultsForNewFields() {
+        val root = JsonParser.parseString(BackupCodec.encode(sample, full)).asJsonObject
+        root.addProperty("databaseVersion", 12)
+        listOf("customThemeColor", "summaryQuickAddEnabled", "compTimeInitialHours", "advanceFillEnabled")
+            .forEach { root.getAsJsonObject("settings").remove(it) }
+        root.getAsJsonArray("workDays").forEach { it.asJsonObject.remove("manualSingleHours"); it.asJsonObject.remove("manualDoubleHours") }
+        val restored = BackupCodec.decode(root.toString(), full)
+        assertEquals(sample, restored)
+        assertTrue(restored.settings!!.summaryQuickAddEnabled)
+        assertEquals(DEFAULT_CUSTOM_THEME_COLOR, restored.settings!!.customThemeColor)
+    }
+
+    @Test fun version38BackupGetsClassicAdvance() {
+        val root = JsonParser.parseString(BackupCodec.encode(sample, full)).asJsonObject
+        root.addProperty("databaseVersion", 13)
+        root.getAsJsonObject("settings").remove("advanceFillEnabled")
+        assertFalse(BackupCodec.decode(root.toString(), full).settings!!.advanceFillEnabled)
+    }
+
+    @Test fun version38And39BackupsGetDefaultTogglesAndMultiplier() {
+        val root = JsonParser.parseString(BackupCodec.encode(sample, full)).asJsonObject
+        root.addProperty("databaseVersion", 14)
+        listOf("bankEnabled", "daySwipeEnabled", "calendarHeatEnabled", "quickAddEnabled").forEach { root.getAsJsonObject("settings").remove(it) }
+        root.getAsJsonArray("workDays").forEach { it.asJsonObject.remove("manualMultiplier") }
+        val restored = BackupCodec.decode(root.toString(), full)
+        assertEquals(sample, restored)
+        assertTrue(restored.settings!!.bankEnabled && restored.settings!!.calendarHeatEnabled)
+        assertRejected { it.getAsJsonObject("settings").remove("bankEnabled") }
+        assertRejected { it.getAsJsonArray("workDays")[0].asJsonObject.addProperty("manualMultiplier", 0.5) }
+    }
+
+    @Test fun version40BackupGetsNoPartialCompOff() {
+        val root = JsonParser.parseString(BackupCodec.encode(sample, full)).asJsonObject
+        root.addProperty("databaseVersion", 15)
+        root.getAsJsonArray("workDays").forEach { it.asJsonObject.remove("compOffHours") }
+        assertEquals(sample, BackupCodec.decode(root.toString(), full))
+        assertRejected { it.getAsJsonArray("workDays")[0].asJsonObject.remove("compOffHours") }
+        // Отгул на часть дня у праздника (sample — HOLIDAY) недопустим.
+        assertRejected { it.getAsJsonArray("workDays")[0].asJsonObject.addProperty("compOffHours", 2.0) }
+    }
+
+    @Test fun manualHoursMustMatchDayHoursAndType() {
+        assertRejected { it.getAsJsonObject("settings").remove("compTimeInitialHours") }
+        assertRejected { it.getAsJsonObject("settings").remove("advanceFillEnabled") }
+        assertRejected { it.getAsJsonObject("settings").addProperty("compTimeInitialHours", -1) }
+        // Ручные часы у обычного дня
+        assertRejected { it.getAsJsonArray("workDays")[0].asJsonObject.addProperty("manualDoubleHours", 2.0) }
+        // Ручной день, где одинарные + двойные не равны часам дня
+        assertRejected {
+            val day = it.getAsJsonArray("workDays")[0].asJsonObject
+            day.addProperty("dayType", "MANUAL")
+            day.addProperty("manualSingleHours", 3.0)
+            day.addProperty("manualDoubleHours", 3.0)
+        }
     }
 
     @Test fun invalidNumbersDoNotSilentlyTruncateOrBecomeZero() {

@@ -43,7 +43,9 @@ class BackupRepository(private val database: AppDatabase) {
                     val id = if (current == null) {
                         operations.insert(imported.copy(id = 0, name = imported.name.trim()))
                     } else {
-                        operations.update(imported.copy(id = current.id, name = imported.name.trim(), sortOrder = current.sortOrder))
+                        // Старые конфиги не знают об архиве: не возвращаем архивную операцию в выбор.
+                        operations.update(imported.copy(id = current.id, name = imported.name.trim(), sortOrder = current.sortOrder,
+                            archived = imported.archived || current.archived))
                         current.id
                     }
                     order += id

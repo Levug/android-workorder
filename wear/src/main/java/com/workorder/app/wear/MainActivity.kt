@@ -62,6 +62,7 @@ private fun WearWorkOrderScreen(repository: WearSyncRepository) {
     val operations by repository.operations.collectAsState()
     val status by repository.status.collectAsState()
     val isSending by repository.isSending.collectAsState()
+    val quickAmounts by repository.quickAmounts.collectAsState()
     var selectedId by remember { mutableLongStateOf(0L) }
     val selected = operations.firstOrNull { it.id == selectedId }
 
@@ -78,6 +79,7 @@ private fun WearWorkOrderScreen(repository: WearSyncRepository) {
     } else {
         QuantityScreen(
             operation = selected,
+            quickAmounts = quickAmounts,
             isSending = isSending,
             status = status,
             onSend = { repository.queueOperation(selected, it) },
@@ -149,6 +151,7 @@ private fun OperationList(
 @Composable
 private fun QuantityScreen(
     operation: WearOperationDto,
+    quickAmounts: List<Int>,
     isSending: Boolean,
     status: String,
     onSend: suspend (Int) -> Boolean,
@@ -190,8 +193,10 @@ private fun QuantityScreen(
                 )
             }
             item { Text("Быстро добавить", style = MaterialTheme.typography.caption1) }
-            item { QuickButtons(values = listOf(1, 5), enabled = !isSending, onClick = ::send) }
-            item { QuickButtons(values = listOf(10, 17), enabled = !isSending, onClick = ::send) }
+            // Те же быстрые партии, что в настройках телефона, по две в ряд.
+            quickAmounts.chunked(2).forEach { row ->
+                item { QuickButtons(values = row, enabled = !isSending, onClick = ::send) }
+            }
             item { Spacer(Modifier.height(2.dp)) }
             item {
                 Row(
@@ -208,7 +213,7 @@ private fun QuantityScreen(
                     Text(customQuantity.toString(), style = MaterialTheme.typography.title2)
                     Button(
                         modifier = Modifier.size(48.dp),
-                        onClick = { customQuantity = (customQuantity + 1).coerceAtMost(999) },
+                        onClick = { customQuantity = (customQuantity + 1).coerceAtMost(9999) },
                         enabled = !isSending,
                         colors = ButtonDefaults.secondaryButtonColors()
                     ) { Text("+") }

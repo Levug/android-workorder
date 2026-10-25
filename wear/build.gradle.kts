@@ -1,16 +1,6 @@
-import java.io.FileInputStream
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-}
-
-val keystorePropertiesFile = rootProject.file("keystore.properties")
-val keystoreProperties = Properties().apply {
-    if (keystorePropertiesFile.exists()) {
-        FileInputStream(keystorePropertiesFile).use(::load)
-    }
 }
 
 android {
@@ -21,23 +11,16 @@ android {
         applicationId = "com.workorder.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "3.4-beta"
+        versionCode = 10
+        versionName = "4.1"
     }
 
-    signingConfigs {
-        if (keystorePropertiesFile.exists()) {
-            create("release") {
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
-                storePassword = keystoreProperties.getProperty("storePassword")
-                keyAlias = keystoreProperties.getProperty("keyAlias")
-                keyPassword = keystoreProperties.getProperty("keyPassword")
-            }
-        }
-    }
     buildTypes {
+        // Пара к телефону: тот же пакет com.workorder.app.proto и та же debug-подпись,
+        // иначе Data Layer Wear OS не свяжет приложения.
         release {
-            signingConfig = signingConfigs.findByName("release")
+            applicationIdSuffix = ".proto"
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -54,6 +37,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = libs.versions.composeCompiler.get()

@@ -29,4 +29,31 @@ class WearProtocolTest {
         assertFalse(WearProtocol.isEntryPath("/workorder/v1/entries"))
         assertFalse(WearProtocol.isEntryPath("/other/entries/abc"))
     }
+
+    @Test
+    fun quickAmountsAreOptionalForOlderPhones() {
+        val legacy = """{"schemaVersion":1,"updatedAt":5,"operations":[]}"""
+        val catalog = WearProtocol.decodeCatalog(legacy.encodeToByteArray())
+        assertEquals(WearProtocol.DEFAULT_QUICK_AMOUNTS, WearProtocol.quickAmounts(catalog))
+
+        val current = WearCatalogDto(updatedAt = 6, operations = emptyList(), quickAmounts = listOf(2, 4, 8))
+        val decoded = WearProtocol.decodeCatalog(WearProtocol.encodeCatalog(current))
+        assertEquals(current, decoded)
+        assertEquals(listOf(2, 4, 8), WearProtocol.quickAmounts(decoded))
+        assertEquals(WearProtocol.DEFAULT_QUICK_AMOUNTS, WearProtocol.quickAmounts(current.copy(quickAmounts = listOf(1, 1))))
+        assertEquals(WearProtocol.DEFAULT_QUICK_AMOUNTS, WearProtocol.quickAmounts(current.copy(quickAmounts = emptyList())))
+    }
+
+    @Test
+    fun watchStatusRoundTrips() {
+        val status = WearWatchStatusDto(appVersion = "3.5-beta", catalogUpdatedAt = 7, pendingEvents = 2, reportedAt = 8)
+        assertEquals(status, WearProtocol.decodeWatchStatus(WearProtocol.encodeWatchStatus(status)))
+    }
+
+    @Test
+    fun watchAcceptsUpToSixQuickAmounts() {
+        val six = WearCatalogDto(updatedAt = 1, operations = emptyList(), quickAmounts = listOf(1, 2, 5, 10, 17, 25))
+        assertEquals(listOf(1, 2, 5, 10, 17, 25), WearProtocol.quickAmounts(six))
+        assertEquals(WearProtocol.DEFAULT_QUICK_AMOUNTS, WearProtocol.quickAmounts(six.copy(quickAmounts = (1..7).toList())))
+    }
 }

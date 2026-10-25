@@ -23,7 +23,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.workorder.app.util.formatNumber
@@ -51,12 +55,14 @@ fun HorizontalBarChart(
 ) {
     if (data.isEmpty()) return
     val maxValue = data.maxOf { it.second }.takeIf { it > 0 } ?: 1.0
+    // Подписи стоят рядом с полосами, поэтому разные цвета не нужны: один цвет спокойнее.
+    val barColor = MaterialTheme.colorScheme.primary
 
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        data.forEachIndexed { index, (label, value, valueLabel) ->
+        data.forEach { (label, value, valueLabel) ->
             Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -89,7 +95,7 @@ fun HorizontalBarChart(
                             .fillMaxHeight()
                             .fillMaxWidth((value / maxValue).toFloat().coerceIn(0.02f, 1f))
                             .clip(CircleShape)
-                            .background(chartPalette[index % chartPalette.size])
+                            .background(barColor)
                     )
                 }
             }
@@ -100,11 +106,16 @@ fun HorizontalBarChart(
 /** Кольцевая диаграмма долей с легендой и текстом в центре. */
 @Composable
 fun DonutChart(
-    data: List<Pair<String, Double>>,
+    slices: List<Pair<String, Double>>,
     centerTitle: String,
     centerSubtitle: String,
     modifier: Modifier = Modifier
 ) {
+    // Больше 7 долей палитра начинает повторяться: хвост объединяется в «Прочие».
+    val data = if (slices.size <= 7) slices else {
+        val sorted = slices.sortedByDescending { it.second }
+        sorted.take(6) + ("Прочие (${sorted.size - 6})" to sorted.drop(6).sumOf { it.second })
+    }
     val total = data.sumOf { it.second }
     if (data.isEmpty() || total <= 0) return
 
@@ -188,40 +199,57 @@ fun DonutChart(
     }
 }
 
-/** Столбики часов по дням месяца. */
+/**
+ * Столбики по дням месяца. Касание выбирает день (подпись и действие — через [selectedDay]/[onSelectDay]),
+ * пунктир [referenceValue] показывает ориентир, например часы смены.
+ */
 @Composable
 fun MonthColumnChart(
     dailyValues: List<Pair<Int, Double>>,
     daysInMonth: Int,
     modifier: Modifier = Modifier,
-    unit: String = "ч"
+    unit: String = "ч",
+    referenceValue: Double? = null,
+    referenceLabel: String? = null,
+    selectedDay: Int? = null,
+    onSelectDay: ((Int?) -> Unit)? = null
 ) {
     if (dailyValues.isEmpty()) return
-    val maxValue = dailyValues.maxOf { it.second }.coerceAtLeast(0.0)
+    val reference = referenceValue?.takeIf { it > 0 }
+    val dataMax = dailyValues.maxOf { it.second }.coerceAtLeast(0.0)
+    // Шкала вмещает и пунктир ориентира, а подпись «макс.» — только реальные значения.
+    val maxValue = maxOf(dataMax, reference ?: 0.0)
     val minValue = dailyValues.minOf { it.second }.coerceAtMost(0.0)
     val span = (maxValue - minValue).takeIf { it > 0 } ?: 1.0
     val barColor = MaterialTheme.colorScheme.primary
+    val dimmedBarColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+    val selectedColor = MaterialTheme.colorScheme.tertiary
     val gridColor = MaterialTheme.colorScheme.outlineVariant
+    val referenceColor = MaterialTheme.colorScheme.secondary
+    val valueByDay = dailyValues.toMap()
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "макс. ${maxValue.formatNumber()} $unit" +
-                    if (minValue < 0) " · мин. ${minValue.formatNumber()} $unit" else "",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Text(
+            text = "макс. ${dataMax.formatNumber()} $unit" +
+                (if (minValue < 0) " · мин. ${minValue.formatNumber()} $unit" else "") +
+                (if (reference != null && referenceLabel != null) " · пунктир — $referenceLabel" else ""),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Spacer(Modifier.height(4.dp))
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(140.dp)
+                .then(
+                    if (onSelectDay != null) Modifier.pointerInput(daysInMonth, valueByDay) {
+                        detectTapGestures { offset ->
+                            val day = (offset.x / (size.width.toFloat() / daysInMonth)).toInt() + 1
+                            onSelectDay(day.takeIf { it in 1..daysInMonth && it in valueByDay && it != selectedDay })
+                        }
+                    } else Modifier
+                )
         ) {
-            val valueByDay = dailyValues.toMap()
             val slot = size.width / daysInMonth
             val barWidth = (slot * 0.65f).coerceAtLeast(2f)
             val zeroY = (maxValue / span * size.height).toFloat()
@@ -242,7 +270,11 @@ fun MonthColumnChart(
                 val barHeight = (kotlin.math.abs(value) / span * size.height).toFloat()
                 if (barHeight <= 0) continue
                 drawRoundRect(
-                    color = barColor,
+                    color = when {
+                        day == selectedDay -> selectedColor
+                        selectedDay != null -> dimmedBarColor
+                        else -> barColor
+                    },
                     topLeft = Offset(
                         x = (day - 1) * slot + (slot - barWidth) / 2,
                         y = if (value >= 0) zeroY - barHeight else zeroY
@@ -252,18 +284,41 @@ fun MonthColumnChart(
                 )
             }
             drawLine(gridColor, Offset(0f, zeroY), Offset(size.width, zeroY), strokeWidth = 2f)
+            if (reference != null) {
+                val y = (zeroY - reference / span * size.height).toFloat()
+                drawLine(
+                    color = referenceColor,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 2.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx()))
+                )
+            }
         }
         Spacer(Modifier.height(4.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            listOf(1, 5, 10, 15, 20, 25, daysInMonth).distinct().forEach { day ->
-                Text(
-                    text = day.toString(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        DayAxisLabels(daysInMonth)
+    }
+}
+
+/** Подписи оси точно под центрами «своих» столбиков. */
+@Composable
+private fun DayAxisLabels(daysInMonth: Int) {
+    val days = listOf(1, 5, 10, 15, 20, 25, daysInMonth).distinct()
+    val style = MaterialTheme.typography.labelSmall
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    Layout(
+        content = { days.forEach { Text(it.toString(), style = style, color = color) } },
+        modifier = Modifier.fillMaxWidth()
+    ) { measurables, constraints ->
+        val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0)) }
+        val width = constraints.maxWidth
+        val height = placeables.maxOfOrNull { it.height } ?: 0
+        val slot = width.toFloat() / daysInMonth
+        layout(width, height) {
+            placeables.forEachIndexed { index, placeable ->
+                val center = (days[index] - 0.5f) * slot
+                val x = (center - placeable.width / 2f).toInt().coerceIn(0, (width - placeable.width).coerceAtLeast(0))
+                placeable.place(x, 0)
             }
         }
     }

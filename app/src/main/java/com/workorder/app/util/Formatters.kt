@@ -29,6 +29,23 @@ private val shortDateFormatter: DateTimeFormatter =
 private val monthFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("LLLL yyyy", ruLocale)
 
+private const val NBSP = '\u00A0'
+private val shortWordSpace = Regex("""(?<=^|(?<!\d)\s|[(«])(\p{L}{1,2}|[×=−])\s""")
+private val dashSpace = Regex("""\s—""")
+private val numberUnitSpace = Regex("""(\d)\s(?=(\p{L}{1,2}|[₽%])(?!\p{L}))""")
+private val shortLastWord = Regex("""\s(\S{1,4})$""")
+
+/**
+ * Неразрывные пробелы по правилам вёрстки: после предлогов и союзов из одной-двух букв, перед тире,
+ * между числом и единицей («16 ч») и перед коротким последним словом. Так при узком экране
+ * или крупном шрифте строка не заканчивается на «в» и не оставляет «ч» одну на новой строке.
+ */
+fun String.noOrphans(): String = this
+    .replace(dashSpace) { NBSP + "—" }
+    .replace(shortWordSpace) { it.groupValues[1] + NBSP }
+    .replace(numberUnitSpace) { it.groupValues[1] + NBSP }
+    .replace(shortLastWord) { NBSP + it.groupValues[1] }
+
 /** 2.5 -> "2,5"; 8.0 -> "8". */
 fun Double.formatNumber(): String = numberFormat.format(this)
 
@@ -37,8 +54,25 @@ fun Double.formatHours(): String = "${formatNumber()} ч"
 fun formatTime(epochMillis: Long): String =
     Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).format(timeFormatter)
 
+/** "сегодня 14:05", "вчера 09:30", "9 июля 14:05". */
+fun formatMoment(epochMillis: Long): String {
+    val moment = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
+    val day = when (moment.toLocalDate()) {
+        LocalDate.now() -> "сегодня"
+        LocalDate.now().minusDays(1) -> "вчера"
+        else -> moment.toLocalDate().formatShort()
+    }
+    return "$day ${moment.format(timeFormatter)}"
+}
+
 /** "9 июля, среда". */
 fun LocalDate.formatFull(): String = format(fullDateFormatter)
+
+private val dayTitleFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("d MMMM, EE", ruLocale)
+
+/** "9 июля, ср" — подзаголовок верхней панели: полное «среда» не влезало при крупном шрифте. */
+fun LocalDate.formatDayTitle(): String = format(dayTitleFormatter)
 
 /** "9 июля". */
 fun LocalDate.formatShort(): String = format(shortDateFormatter)

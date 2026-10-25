@@ -2,6 +2,7 @@ package com.workorder.app.ui.component
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import com.workorder.app.ui.theme.calendarDayOffColors
 import com.workorder.app.ui.theme.calendarHeatPalette
 import org.junit.Assert.*
 import org.junit.Test
@@ -27,6 +28,27 @@ class CalendarHeatTest {
             assertTrue(contrast >= 4.5f)
         }
         }
+    }
+
+    @Test fun dayOffColourIsReadableAndDoesNotRepeatTheHeatRamp() {
+        listOf("DEFAULT", "OCEAN", "FOREST", "AMBER", "LAVENDER").forEach { preset ->
+            listOf(false, true).forEach { dark ->
+                val colors = calendarDayOffColors(preset, darkTheme = dark)
+                val background = colors.background.luminance()
+                val content = colors.content.luminance()
+                val contrast = if (background > content) (background + 0.05f) / (content + 0.05f)
+                else (content + 0.05f) / (background + 0.05f)
+                assertTrue("$preset dark=$dark contrast=$contrast", contrast >= 4.5f)
+                // Фон выходного не должен совпадать с оттенками отработанных дней.
+                calendarHeatPalette(preset).forEach { heat ->
+                    assertTrue("$preset dark=$dark", heat != colors.background)
+                }
+                assertEquals(dark, background < 0.5f)
+            }
+        }
+        // Зелёная тема и зелёный системный акцент получают не зелёный, а песочный фон.
+        assertEquals(calendarDayOffColors("FOREST"), calendarDayOffColors("DEFAULT", Color(0xFF3F9A5B)))
+        assertNotEquals(calendarDayOffColors("FOREST"), calendarDayOffColors("DEFAULT"))
     }
 
     @Test fun invalidHoursAreSafeAndEveryPresetHasItsOwnRamp() {
