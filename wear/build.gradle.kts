@@ -1,6 +1,18 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+}
+
+// Релизный ключ RuStore — вне репозитория: keystore.properties (storeFile, storePassword, keyAlias, keyPassword).
+// Без файла release собирается неподписанным.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        FileInputStream(keystorePropertiesFile).use(::load)
+    }
 }
 
 android {
@@ -8,19 +20,31 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.workorder.app"
+        // Тот же пакет и ключ, что у телефона: иначе Data Layer Wear OS не свяжет приложения.
+        applicationId = "ru.workorder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 10
-        versionName = "4.1"
+        versionCode = 11
+        versionName = "4.2"
+    }
+
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
-        // Пара к телефону: тот же пакет com.workorder.app.proto и та же debug-подпись,
-        // иначе Data Layer Wear OS не свяжет приложения.
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+        }
         release {
-            applicationIdSuffix = ".proto"
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
