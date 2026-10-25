@@ -16,8 +16,21 @@ interface WorkDayDao {
     @Query("SELECT * FROM work_days WHERE date = :date")
     suspend fun getByDate(date: String): WorkDay?
 
+    @Query("SELECT COUNT(*) FROM work_days WHERE id = :id")
+    suspend fun countById(id: Long): Int
+
     @Query("SELECT * FROM work_days WHERE date LIKE :yearMonth || '-%' ORDER BY date ASC")
     fun observeByMonth(yearMonth: String): Flow<List<WorkDay>>
+
+    /** Накоплено выходами за отгул минус списано отгулами (целыми днями и на часть дня), за всё время. */
+    @Query(
+        """
+        SELECT COALESCE(SUM(CASE dayType WHEN 'COMP_WORK' THEN totalHours WHEN 'COMP_OFF' THEN -totalHours ELSE 0 END)
+            - SUM(compOffHours), 0)
+        FROM work_days WHERE isRecorded = 1
+        """
+    )
+    fun observeCompTimeBalance(): Flow<Double>
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(workDay: WorkDay): Long

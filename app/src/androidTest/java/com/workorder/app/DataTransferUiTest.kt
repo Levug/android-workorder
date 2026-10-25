@@ -74,6 +74,13 @@ class DataTransferUiTest {
         }
     }
 
+    /** Настройки — список разделов: перенос данных и ставки лежат внутри своих разделов. */
+    private fun openSection(title: String) {
+        compose.waitUntil { vm.form.value != null }
+        compose.onNodeWithText(title).performScrollTo().performClick()
+        compose.waitForIdle()
+    }
+
     @After fun tearDown() {
         monitors.forEach { InstrumentationRegistry.getInstrumentation().removeMonitor(it) }
         compose.activityRule.scenario.onActivity { it.setContent {} }
@@ -99,6 +106,7 @@ class DataTransferUiTest {
                 else -> null
             }
         }
+        openSection("Резервная копия")
         compose.onNodeWithText("Экспорт базы").performScrollTo().performClick()
         compose.waitUntil(10_000) { vm.exportFile.value != null }
         compose.onNodeWithText("Отправить в приложение").assertIsDisplayed()
@@ -139,6 +147,7 @@ class DataTransferUiTest {
                 else -> null
             }
         }
+        openSection("Резервная копия")
         compose.onNodeWithText("Импорт конфига").performScrollTo().performClick()
         compose.waitForIdle()
         assertTrue(openCalled)
@@ -182,12 +191,13 @@ class DataTransferUiTest {
                 }
             }
             compose.waitForIdle()
-            compose.onNodeWithContentDescription("2026-09-01: 2 фактических часов").assertExists()
+            compose.onNodeWithContentDescription("${LocalDate.parse("2026-09-01").formatFull()}: 2 фактических часов").assertExists()
             capture("calendar-${mode.name.lowercase()}.png")
         }
     }
 
     @Test fun dataSectionAndExportDialogScreenshots() {
+        openSection("Резервная копия")
         compose.onNodeWithText("Импорт конфига").performScrollTo()
         capture("data-section.png")
         compose.onNodeWithText("Экспорт базы").performScrollTo().performClick()
@@ -198,15 +208,16 @@ class DataTransferUiTest {
 
     @Test fun preferencesSaveTogetherAndDraftSurvivesAppearanceChange() {
         compose.waitUntil { vm.form.value != null }
-        compose.onNodeWithText("Реальная ставка в час, ₽").performTextReplacement("450,5")
-        compose.onNodeWithText("Часов в смене по умолчанию").performTextReplacement("9,5")
-        compose.onNodeWithText("Сохранить настройки").assertIsDisplayed()
+        openSection("Оплата и смена")
+        compose.onNodeWithText("Реальная, ₽/ч").performTextReplacement("450,5")
+        compose.onNodeWithText("Часов в смене").performTextReplacement("9,5")
+        compose.onNodeWithText("Сохранить").assertIsDisplayed()
         assertEquals(0.0, runBlocking { db.settingsDao().get()!!.hourlyRate }, 0.0)
         compose.runOnIdle { vm.setThemeMode(ThemeMode.DARK) }
         compose.waitUntil { vm.form.value?.stored?.themeMode == ThemeMode.DARK }
-        compose.onNodeWithText("Реальная ставка в час, ₽").assertTextContains("450,5")
+        compose.onNodeWithText("Реальная, ₽/ч").assertTextContains("450,5")
         capture("settings-save-bar.png")
-        compose.onNodeWithText("Сохранить настройки").performClick()
+        compose.onNodeWithText("Сохранить").performClick()
         compose.waitUntil { !vm.savingForm.value && vm.form.value?.dirty == false }
         val saved = runBlocking { db.settingsDao().get()!! }
         assertEquals(450.5, saved.hourlyRate, 0.0)
@@ -302,27 +313,27 @@ class DataTransferUiTest {
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent { WorkOrderTheme { CalendarScreen(calendar) { openedDay = it } } }
         }
-        compose.onNodeWithText("Показать специализации").assertIsDisplayed()
-        compose.onNodeWithContentDescription("$first: 12 фактических часов").assertExists()
+        compose.onNodeWithContentDescription("Показать специализации").assertIsDisplayed()
+        compose.onNodeWithContentDescription("${LocalDate.parse(first).formatFull()}: 12 фактических часов").assertExists()
         compose.onNodeWithTag("calendar-day-$second").assertContentDescriptionContains("нет наряда", substring = true)
         assertEquals(1, calendar.uiState.value.workedDays)
         assertEquals(12.0, calendar.uiState.value.workedHours, 0.0)
         val bounds = compose.onNodeWithTag("calendar-day-$first").getUnclippedBoundsInRoot()
         capture("calendar-flip-front.png")
-        compose.onNodeWithText("Показать специализации").performClick()
-        compose.onNodeWithContentDescription("$first: Сборка").assertExists()
-        compose.onNodeWithContentDescription("$first: 12 фактических часов").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Показать специализации").performClick()
+        compose.onNodeWithContentDescription("${LocalDate.parse(first).formatFull()}: Сборка").assertExists()
+        compose.onNodeWithContentDescription("${LocalDate.parse(first).formatFull()}: 12 фактических часов").assertDoesNotExist()
         assertEquals(bounds, compose.onNodeWithTag("calendar-day-$first").getUnclippedBoundsInRoot())
         capture("calendar-flip-back.png")
         compose.onNodeWithTag("calendar-day-$second").performClick()
         assertEquals(second, openedDay)
-        compose.onNodeWithText("Показать часы").performClick()
-        compose.onNodeWithContentDescription("$first: 12 фактических часов").assertExists()
-        compose.onNodeWithText("Показать специализации").performClick()
+        compose.onNodeWithContentDescription("Показать часы").performClick()
+        compose.onNodeWithContentDescription("${LocalDate.parse(first).formatFull()}: 12 фактических часов").assertExists()
+        compose.onNodeWithContentDescription("Показать специализации").performClick()
         runBlocking { preferences.update { it.copy(daySpecializationEnabled = false) } }
         compose.waitUntil { !calendar.uiState.value.settings.daySpecializationEnabled }
-        compose.onNodeWithText("Показать часы").assertDoesNotExist()
-        compose.onNodeWithContentDescription("$first: 12 фактических часов").assertExists()
+        compose.onNodeWithContentDescription("Показать часы").assertDoesNotExist()
+        compose.onNodeWithContentDescription("${LocalDate.parse(first).formatFull()}: 12 фактических часов").assertExists()
         assertEquals(before.workDays, runBlocking { BackupRepository(db).snapshot().workDays })
     }
 
@@ -345,7 +356,7 @@ class DataTransferUiTest {
         assertEquals(0.0, dayVm.uiState.value.dayHours, 0.0)
         assertEquals(0, dayVm.uiState.value.totalUnits)
         compose.onNodeWithText("План · смена ещё не отмечена").assertExists()
-        compose.onNodeWithText("указать часы ✎").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("указать часы").performScrollTo().assertIsDisplayed()
         capture("specialization-plan-editor.png")
     }
 

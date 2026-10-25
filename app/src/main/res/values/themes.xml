@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.WorkOrder" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Фон окна совпадает с фоном приложения, иконка по центру: при запуске нет вспышки пустого экрана. -->
+    <style name="Theme.WorkOrder" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@drawable/launch_screen</item>
+        <item name="android:colorBackground">@color/window_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>

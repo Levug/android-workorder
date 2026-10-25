@@ -1,6 +1,8 @@
 package com.workorder.app.util
 
 import android.content.Context
+import android.net.Uri
+import java.io.IOException
 import com.itextpdf.io.font.PdfEncodings
 import com.itextpdf.kernel.font.PdfFontFactory
 import com.itextpdf.kernel.pdf.PdfDocument
@@ -20,6 +22,16 @@ import java.util.Locale
 
 class ReportExporter(private val context: Context) {
 
+    /** Временная папка: пользователь сам выбирает, куда сохранить или кому отправить отчёт. */
+    private fun exportFile(name: String): File =
+        File(context.cacheDir, "exports").apply { mkdirs() }.let { File(it, name) }
+
+    fun copyTo(file: File, uri: Uri) {
+        context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
+            file.inputStream().use { input -> input.copyTo(output) }
+        } ?: throw IOException("Не удалось открыть выбранный файл для записи")
+    }
+
     fun exportToPdf(
         yearMonth: String,
         totalHours: Double,
@@ -28,7 +40,7 @@ class ReportExporter(private val context: Context) {
         totals: List<OperationTotal>
     ): File? {
         return try {
-            val file = File(context.getExternalFilesDir(null), "report_$yearMonth.pdf")
+            val file = exportFile("workorder_report_$yearMonth.pdf")
 
             PdfWriter(file).use { writer ->
                 val pdfDocument = PdfDocument(writer)
@@ -91,7 +103,7 @@ class ReportExporter(private val context: Context) {
         totals: List<OperationTotal>
     ): File? {
         return try {
-            val file = File(context.getExternalFilesDir(null), "report_$yearMonth.csv")
+            val file = exportFile("workorder_report_$yearMonth.csv")
 
             OutputStreamWriter(FileOutputStream(file), StandardCharsets.UTF_8).use { osw ->
                 // BOM, чтобы Excel распознал UTF-8; ';' — разделитель для русской локали

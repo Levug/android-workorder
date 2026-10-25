@@ -6,7 +6,20 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-val WorkOrderTypography = Typography(
+/** Цифры одинаковой ширины: итоги и счётчики не «прыгают», когда меняются значения. */
+private fun TextStyle.tabular() = copy(fontFeatureSettings = "tnum")
+
+val WorkOrderTypography: Typography by lazy { BaseTypography.run {
+    Typography(
+        displayLarge = displayLarge.tabular(), displayMedium = displayMedium.tabular(), displaySmall = displaySmall.tabular(),
+        headlineLarge = headlineLarge.tabular(), headlineMedium = headlineMedium.tabular(), headlineSmall = headlineSmall.tabular(),
+        titleLarge = titleLarge.tabular(), titleMedium = titleMedium.tabular(), titleSmall = titleSmall.tabular(),
+        bodyLarge = bodyLarge.tabular(), bodyMedium = bodyMedium.tabular(), bodySmall = bodySmall.tabular(),
+        labelLarge = labelLarge.tabular(), labelMedium = labelMedium.tabular(), labelSmall = labelSmall.tabular()
+    )
+} }
+
+private val BaseTypography = Typography(
     headlineLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,

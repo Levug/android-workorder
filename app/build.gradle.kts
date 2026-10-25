@@ -1,17 +1,7 @@
-import java.io.FileInputStream
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
-}
-
-val keystorePropertiesFile = rootProject.file("keystore.properties")
-val keystoreProperties = Properties().apply {
-    if (keystorePropertiesFile.exists()) {
-        FileInputStream(keystorePropertiesFile).use(::load)
-    }
 }
 
 android {
@@ -22,8 +12,8 @@ android {
         applicationId = "com.workorder.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "3.6-beta"
+        versionCode = 15
+        versionName = "4.1"
         buildConfigField("boolean", "ENABLE_WEAR_SYNC", "true")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -32,16 +22,6 @@ android {
         }
     }
 
-    signingConfigs {
-        if (keystorePropertiesFile.exists()) {
-            create("release") {
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
-                storePassword = keystoreProperties.getProperty("storePassword")
-                keyAlias = keystoreProperties.getProperty("keyAlias")
-                keyPassword = keystoreProperties.getProperty("keyPassword")
-            }
-        }
-    }
     buildTypes {
         create("qa") {
             initWith(getByName("debug"))
@@ -49,8 +29,12 @@ android {
             matchingFallbacks += listOf("debug")
             buildConfigField("boolean", "ENABLE_WEAR_SYNC", "false")
         }
+        // Единственный выпуск. Пакет и подпись — от прежней прото-сборки (com.workorder.app.proto,
+        // debug-ключ этого компьютера ~/.android/debug.keystore): обновление ставится поверх неё с данными.
+        // Ключ нужно беречь — приложение с другим ключом поверх не встанет. Копия: C:\qoder\android-workorder-signing.
         release {
-            signingConfig = signingConfigs.findByName("release")
+            applicationIdSuffix = ".proto"
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -60,6 +44,19 @@ android {
     }
     // Instrumentation is isolated from the real user database by default.
     testBuildType = "qa"
+    testOptions {
+        unitTests {
+            // Robolectric рисует экраны в модульных тестах (ScreenshotTourTest).
+            isIncludeAndroidResources = true
+            all { test ->
+                // Снимки экранов для проверки вёрстки: .\gradlew.bat testDebugUnitTest -Pscreenshots --tests "*ScreenshotTourTest*"
+                // В обычный прогон не входят: Robolectric-экраны медленные и оставляют фоновые подписки на базу.
+                if (!project.hasProperty("screenshots")) test.exclude("**/ui/ScreenshotTourTest*", "**/ui/DialogScreenshotTest*")
+                test.systemProperty("workorder.screenshots", if (project.hasProperty("screenshots")) "1" else "")
+                test.systemProperty("workorder.screenshotDir", layout.buildDirectory.dir("screenshots").get().asFile.path)
+            }
+        }
+    }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -114,6 +111,10 @@ dependencies {
     implementation(libs.play.services.wearable.china)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))

@@ -12,6 +12,9 @@ import kotlinx.coroutines.runBlocking
 class PhoneWearListenerService : WearableListenerService() {
     override fun onDataChanged(dataEvents: DataEventBuffer) {
         if (!com.workorder.app.BuildConfig.ENABLE_WEAR_SYNC) return
+        val container = (application as WorkOrderApp).container
+        // Выключено в настройках: записи остаются в очереди часов до включения.
+        if (!container.wearSyncManager.isEnabled) return
         val payloads = buildList<Pair<Uri, ByteArray>> {
             dataEvents.forEach { event ->
                 val item = event.dataItem
@@ -27,7 +30,7 @@ class PhoneWearListenerService : WearableListenerService() {
         }
         if (payloads.isEmpty()) return
 
-        val processor = (application as WorkOrderApp).container.wearEventProcessor
+        val processor = container.wearEventProcessor
         runBlocking(Dispatchers.IO) {
             payloads.forEach { (uri, payload) -> processor.processEvent(uri, payload) }
         }

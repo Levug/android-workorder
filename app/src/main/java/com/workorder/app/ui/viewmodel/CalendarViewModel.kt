@@ -8,6 +8,8 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.workorder.app.WorkOrderApp
 import com.workorder.app.data.model.WorkDay
 import com.workorder.app.data.model.Settings
+import com.workorder.app.data.model.fundHours
+import com.workorder.app.data.model.isInHourFund
 import com.workorder.app.data.repository.WorkOrderRepository
 import com.workorder.app.data.repository.SettingsRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,14 +31,15 @@ data class CalendarUiState(
     val settings: Settings = Settings()
 )
 
+/** Месяц хранится в общем состоянии: календарь и отчёты показывают один и тот же месяц. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CalendarViewModel(
     workOrderRepository: WorkOrderRepository,
-    settingsRepository: SettingsRepository
+    settingsRepository: SettingsRepository,
+    private val month: MutableStateFlow<YearMonth> = MutableStateFlow(YearMonth.now())
 ) : ViewModel() {
 
     private val monthFormatter = DateTimeFormatter.ofPattern("yyyy-MM")
-    private val month = MutableStateFlow(YearMonth.now())
 
     val uiState: StateFlow<CalendarUiState> = month.flatMapLatest { m ->
         combine(
@@ -46,15 +49,15 @@ class CalendarViewModel(
             CalendarUiState(
                 month = m,
                 days = days.associateBy { LocalDate.parse(it.date) },
-                workedDays = days.count { it.isRecorded },
-                workedHours = days.filter { it.isRecorded }.sumOf { it.totalHours },
+                workedDays = days.count { it.isInHourFund },
+                workedHours = days.sumOf { it.fundHours },
                 settings = settings
             )
         }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = CalendarUiState(month = YearMonth.now())
+        initialValue = CalendarUiState(month = month.value)
     )
 
     fun previousMonth() { month.value = month.value.minusMonths(1) }
@@ -63,13 +66,16 @@ class CalendarViewModel(
 
     fun goToCurrentMonth() { month.value = YearMonth.now() }
 
+    fun goToMonth(target: YearMonth) { month.value = target }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY] as WorkOrderApp
                 CalendarViewModel(
                     app.container.workOrderRepository,
-                    app.container.settingsRepository
+                    app.container.settingsRepository,
+                    app.container.selectedMonth
                 )
             }
         }

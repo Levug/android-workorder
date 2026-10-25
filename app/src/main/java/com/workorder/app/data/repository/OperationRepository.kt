@@ -8,6 +8,9 @@ class OperationRepository(private val operationDao: OperationDao) {
 
     fun observeAll(): Flow<List<Operation>> = operationDao.observeAll()
 
+    /** Каталог для выбора в наряде и для часов — без архивных операций. */
+    fun observeActive(): Flow<List<Operation>> = operationDao.observeActive()
+
     suspend fun getById(id: Long): Operation? = operationDao.getById(id)
 
     suspend fun getByName(name: String): Operation? = operationDao.getByName(name.trim())
@@ -17,10 +20,17 @@ class OperationRepository(private val operationDao: OperationDao) {
             operationDao.insert(operation.copy(sortOrder = operationDao.nextSortOrder()))
         } else {
             val current = operationDao.getById(operation.id)
-            operationDao.update(operation.copy(sortOrder = current?.sortOrder ?: operation.sortOrder))
+            operationDao.update(
+                operation.copy(
+                    sortOrder = current?.sortOrder ?: operation.sortOrder,
+                    archived = current?.archived ?: operation.archived
+                )
+            )
             operation.id
         }
     }
+
+    suspend fun setArchived(operationId: Long, archived: Boolean) = operationDao.setArchived(operationId, archived)
 
     suspend fun move(operationId: Long, direction: Int) {
         val ordered = operationDao.getAllOrdered().toMutableList()

@@ -1,5 +1,6 @@
 package com.workorder.app.ui.component
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,17 +10,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -27,37 +33,54 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.workorder.app.data.model.Operation
+import com.workorder.app.ui.viewmodel.BatchAddedEvent
+import com.workorder.app.ui.viewmodel.QuickAction
 import com.workorder.app.util.formatNumber
-
-private val quickAmounts = listOf(1, 5, 10, 20)
+import com.workorder.app.util.formatSigned
 
 /**
- * Шторка добавления партии: быстрые кнопки +1/+5/+10/+20 добавляют сразу,
- * произвольное количество — через поле ввода (можно и списать).
+ * Шторка добавления партии: быстрые кнопки добавляют сразу, произвольное количество —
+ * через поле ввода (можно и списать). Подтверждение с отменой показывается прямо в шторке,
+ * потому что снекбар экрана находится под ней.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuantitySheet(
     operation: Operation,
     currentCount: Int,
+    quickAmounts: List<Int>,
+    lastAdded: BatchAddedEvent?,
     onAdd: (Int) -> Unit,
+    onUndo: (BatchAddedEvent) -> Unit,
     onDismiss: () -> Unit
 ) {
     var amountText by remember { mutableStateOf("") }
     val amount = amountText.toIntOrNull()
+    val canAdd = amount != null && amount > 0
+    val add = {
+        if (canAdd) {
+            onAdd(amount!!)
+            amountText = ""
+        }
+    }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -72,22 +95,68 @@ fun QuantitySheet(
                     style = MaterialTheme.typography.titleLarge
                 )
                 Text(
-                    text = "${operation.grade} разряд · ${operation.durationHours.formatNumber()} нч за штуку · сегодня: $currentCount шт · ${(operation.durationHours * currentCount).formatNumber()} нч",
+                    text = "${operation.grade} разряд · ${operation.durationHours.formatNumber()} нч за штуку",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                quickAmounts.forEach { quick ->
-                    FilledTonalButton(
-                        onClick = { onAdd(quick) },
-                        modifier = Modifier.weight(1f)
+            Row(verticalAlignment = Alignment.Bottom) {
+                AnimatedValue(
+                    text = currentCount.toString(),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "шт за день · ${(operation.durationHours * currentCount).formatNumber()} нч",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+
+            val confirmation = lastAdded?.takeIf { it.operationId == operation.id }
+            AnimatedVisibility(visible = confirmation != null) {
+                confirmation?.let { event ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = MaterialTheme.shapes.small
                     ) {
-                        Text("+$quick")
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (event.quantity > 0) "Добавлено ${event.quantity.formatSigned()}" else "Списано ${-event.quantity}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { onUndo(event) }) { Text("Отменить") }
+                        }
+                    }
+                }
+            }
+
+            // До шести быстрых партий: больше четырёх — два ряда по три.
+            val perRow = if (quickAmounts.size > 4) 3 else quickAmounts.size.coerceAtLeast(1)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                quickAmounts.chunked(perRow).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        row.forEach { quick ->
+                            FilledTonalButton(
+                                onClick = { onAdd(quick) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("+$quick", maxLines = 1)
+                            }
+                        }
+                        repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
@@ -98,7 +167,8 @@ fun QuantitySheet(
                     if (text.length <= 5 && text.all { it.isDigit() }) amountText = text
                 },
                 label = { Text("Своё количество") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { add() }),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -112,19 +182,16 @@ fun QuantitySheet(
                         amount?.let { onAdd(-it) }
                         amountText = ""
                     },
-                    enabled = amount != null && amount > 0 && amount <= currentCount,
+                    enabled = canAdd && amount!! <= currentCount,
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.Remove, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text("Убавить")
+                    Text("Списать")
                 }
                 Button(
-                    onClick = {
-                        amount?.let { onAdd(it) }
-                        amountText = ""
-                    },
-                    enabled = amount != null && amount > 0,
+                    onClick = add,
+                    enabled = canAdd,
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null)
@@ -136,13 +203,14 @@ fun QuantitySheet(
     }
 }
 
-/** Шторка выбора операции из каталога с поиском. */
+/** Шторка выбора операции: каталог с поиском. Недавние — в ряду «Быстро добавить» на экране наряда. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OperationPickerSheet(
     operations: List<Operation>,
     onPick: (Operation) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenCatalog: (() -> Unit)? = null
 ) {
     var query by remember { mutableStateOf("") }
     val filtered = remember(operations, query) {
@@ -178,27 +246,47 @@ fun OperationPickerSheet(
 
             if (operations.isEmpty()) {
                 Text(
-                    text = "Каталог операций пуст.\nДобавьте операции: Настройки → Операции.",
+                    text = "Каталог операций пуст. Добавьте операции с нормами времени — и их можно будет вносить в наряд.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 24.dp)
+                    modifier = Modifier.padding(vertical = 16.dp)
                 )
+                if (onOpenCatalog != null) {
+                    Button(onClick = onOpenCatalog, modifier = Modifier.fillMaxWidth()) {
+                        Text("Открыть каталог операций")
+                    }
+                }
             } else {
                 LazyColumn {
                     items(filtered, key = { it.id }) { operation ->
-                        ListItem(
-                            headlineContent = { Text(operation.name) },
-                            supportingContent = {
-                                Text("${operation.grade} разряд · ${operation.durationHours.formatNumber()} нч за штуку")
-                            },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onPick(operation) }
-                        )
+                        OperationRow(operation, null) { onPick(operation) }
+                    }
+                    if (filtered.isEmpty()) {
+                        item {
+                            Text(
+                                "Ничего не найдено",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 16.dp)
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun OperationRow(operation: Operation, icon: androidx.compose.ui.graphics.vector.ImageVector?, onClick: () -> Unit) {
+    ListItem(
+        headlineContent = { Text(operation.name) },
+        supportingContent = {
+            Text("${operation.grade} разряд · ${operation.durationHours.formatNumber()} нч за штуку")
+        },
+        leadingContent = icon?.let { { Icon(it, contentDescription = null) } },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    )
 }

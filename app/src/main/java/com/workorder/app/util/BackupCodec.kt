@@ -24,6 +24,7 @@ data class BackupSnapshot(
 object BackupCodec {
     private const val FULL_FORMAT = "workorder.database"
     private const val CONFIG_FORMAT = "workorder.settings"
+    private const val DATABASE_VERSION = 16
     private val gson = GsonBuilder().serializeNulls().setPrettyPrinting().create()
 
     fun encode(data: BackupSnapshot, kind: TransferKind): String {
@@ -31,7 +32,7 @@ object BackupCodec {
         val root = JsonObject().apply {
             addProperty("format", if (kind == TransferKind.FULL_DATABASE) FULL_FORMAT else CONFIG_FORMAT)
             addProperty("formatVersion", 1)
-            addProperty("databaseVersion", 11)
+            addProperty("databaseVersion", DATABASE_VERSION)
             addProperty("createdAt", Instant.now().toString())
             add("operations", gson.toJsonTree(data.operations))
             add("settings", gson.toJsonTree(data.settings))
@@ -55,17 +56,23 @@ object BackupCodec {
         }
         if (format != null) {
             require(root.int("formatVersion") == 1) { "Версия формата не поддерживается. Обновите приложение." }
-            require(root.int("databaseVersion") in 1..11) { "Копия из более новой версии приложения." }
+            require(root.int("databaseVersion") in 1..DATABASE_VERSION) { "Копия из более новой версии приложения." }
         }
         val newFieldsRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 10
         val recordingStateRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 11
+        val archiveRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 12
+        val compTimeRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 13
+        val advanceFillRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 14
+        val togglesRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 15
+        val partialCompRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 16
         val operations = root.objects("operations").map { op ->
             Operation(
                 id = op.long("id", if (full) null else 0L),
                 name = op.text("name"),
                 durationHours = op.number("durationHours"),
                 grade = op.int("grade", if (full) null else 3),
-                sortOrder = op.int("sortOrder", if (full) null else 0)
+                sortOrder = op.int("sortOrder", if (full) null else 0),
+                archived = op.bool("archived", if (archiveRequired) null else false)
             )
         }
         if (full) require(root.has("settings")) { "Отсутствует settings" }
@@ -81,7 +88,16 @@ object BackupCodec {
                 workSchedule = enumValueOf(s.text("workSchedule", if (full) null else "FIVE_TWO")),
                 shiftAnchorDate = s.text("shiftAnchorDate", if (full) null else "2026-01-01"),
                 interfaceScale = s.number("interfaceScale", if (newFieldsRequired) null else 1.0),
-                daySpecializationEnabled = s.bool("daySpecializationEnabled", if (newFieldsRequired) null else false)
+                daySpecializationEnabled = s.bool("daySpecializationEnabled", if (newFieldsRequired) null else false),
+                quickAmounts = s.text("quickAmounts", if (archiveRequired) null else DEFAULT_QUICK_AMOUNTS),
+                customThemeColor = s.int("customThemeColor", if (compTimeRequired) null else DEFAULT_CUSTOM_THEME_COLOR),
+                summaryQuickAddEnabled = s.bool("summaryQuickAddEnabled", if (compTimeRequired) null else true),
+                compTimeInitialHours = s.number("compTimeInitialHours", if (compTimeRequired) null else 0.0),
+                advanceFillEnabled = s.bool("advanceFillEnabled", if (advanceFillRequired) null else false),
+                bankEnabled = s.bool("bankEnabled", if (togglesRequired) null else true),
+                daySwipeEnabled = s.bool("daySwipeEnabled", if (togglesRequired) null else true),
+                calendarHeatEnabled = s.bool("calendarHeatEnabled", if (togglesRequired) null else true),
+                quickAddEnabled = s.bool("quickAddEnabled", if (togglesRequired) null else true)
             )
         }
         val data = BackupSnapshot(
@@ -90,7 +106,11 @@ object BackupCodec {
             workDays = if (!full) emptyList() else root.objects("workDays").map { d ->
                 WorkDay(d.long("id"), d.text("date"), d.number("totalHours"), d.text("comment"), enumValueOf(d.text("dayType")),
                     d.text("specialization", if (newFieldsRequired) null else ""),
-                    d.bool("isRecorded", if (recordingStateRequired) null else true))
+                    d.bool("isRecorded", if (recordingStateRequired) null else true),
+                    d.number("manualSingleHours", if (compTimeRequired) null else 0.0),
+                    d.number("manualDoubleHours", if (compTimeRequired) null else 0.0),
+                    d.number("manualMultiplier", if (togglesRequired) null else DEFAULT_MANUAL_MULTIPLIER),
+                    d.number("compOffHours", if (partialCompRequired) null else 0.0))
             },
             entries = if (!full) emptyList() else root.objects("entries").map { e ->
                 require(e.has("sourceEventId")) { "Отсутствует sourceEventId" }
@@ -124,6 +144,8 @@ object BackupCodec {
             nonNegative(it.hourlyRate); nonNegative(it.contractHourlyRate); nonNegative(it.defaultDayHours)
             require(it.defaultDayHours > 0) { "Продолжительность смены должна быть положительной" }
             require(it.interfaceScale.isFinite() && it.interfaceScale in 0.85..1.3) { "Масштаб должен быть от 85 до 130%" }
+            require(parseQuickAmounts(it.quickAmounts) != null) { "Быстрые партии: от 1 до 6 разных чисел от 1 до 9999" }
+            nonNegative(it.compTimeInitialHours)
             date(it.shiftAnchorDate)
         }
         if (!full) return
@@ -137,6 +159,22 @@ object BackupCodec {
             require(it.id > 0); date(it.date); nonNegative(it.totalHours)
             require(it.specialization.length <= 120) { "Специализация: не более 120 символов" }
             require(it.isRecorded || it.totalHours == 0.0) { "План специализации не должен содержать часы присутствия" }
+            nonNegative(it.manualSingleHours); nonNegative(it.manualDoubleHours)
+            nonNegative(it.compOffHours)
+            require(it.compOffHours == 0.0 || (it.isRecorded && it.dayType.allowsPartialCompOff)) {
+                "Отгул на часть дня возможен только у отмеченных дней «По графику» и «Рабочий»"
+            }
+            require(it.totalHours + it.compOffHours <= 24.0) { "В сутках не больше 24 часов" }
+            require(it.manualMultiplier.isFinite() && it.manualMultiplier in MANUAL_MULTIPLIER_RANGE) {
+                "Коэффициент ручного режима: от 1 до 10"
+            }
+            if (it.dayType == WorkDayType.MANUAL) {
+                require(it.isRecorded && kotlin.math.abs(it.manualSingleHours + it.manualDoubleHours - it.totalHours) < 1e-6) {
+                    "Ручной режим: одинарные и двойные часы должны давать часы дня"
+                }
+            } else {
+                require(it.manualSingleHours == 0.0 && it.manualDoubleHours == 0.0) { "Ручные часы указаны не в ручном режиме" }
+            }
         }
         data.entries.forEach {
             require(it.id > 0 && it.createdAt >= 0) { "Некорректная запись журнала" }
