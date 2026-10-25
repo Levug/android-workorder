@@ -1,7 +1,19 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
+}
+
+// Релизный ключ RuStore — вне репозитория: keystore.properties (storeFile, storePassword, keyAlias, keyPassword).
+// Без файла release собирается неподписанным.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        FileInputStream(keystorePropertiesFile).use(::load)
+    }
 }
 
 android {
@@ -9,11 +21,12 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.workorder.app"
+        // Пакет для RuStore: короткий и постоянный — после публикации его не сменить.
+        applicationId = "ru.workorder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "4.1"
+        versionCode = 16
+        versionName = "4.2"
         buildConfigField("boolean", "ENABLE_WEAR_SYNC", "true")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -22,19 +35,32 @@ android {
         }
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
+        // Сборка разработчика ставится рядом с выпуском из RuStore и не трогает его данные.
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+        }
         create("qa") {
             initWith(getByName("debug"))
             applicationIdSuffix = ".qa"
             matchingFallbacks += listOf("debug")
             buildConfigField("boolean", "ENABLE_WEAR_SYNC", "false")
         }
-        // Единственный выпуск. Пакет и подпись — от прежней прото-сборки (com.workorder.app.proto,
-        // debug-ключ этого компьютера ~/.android/debug.keystore): обновление ставится поверх неё с данными.
-        // Ключ нужно беречь — приложение с другим ключом поверх не встанет. Копия: C:\qoder\android-workorder-signing.
+        // Выпуск для RuStore и GitHub: пакет ru.workorder, релизный ключ (не отладочный).
+        // Ключ нужно беречь — обновление с другим ключом поверх не встанет.
         release {
-            applicationIdSuffix = ".proto"
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -51,9 +77,10 @@ android {
             all { test ->
                 // Снимки экранов для проверки вёрстки: .\gradlew.bat testDebugUnitTest -Pscreenshots --tests "*ScreenshotTourTest*"
                 // В обычный прогон не входят: Robolectric-экраны медленные и оставляют фоновые подписки на базу.
-                if (!project.hasProperty("screenshots")) test.exclude("**/ui/ScreenshotTourTest*", "**/ui/DialogScreenshotTest*")
+                if (!project.hasProperty("screenshots")) test.exclude("**/ui/ScreenshotTourTest*", "**/ui/DialogScreenshotTest*", "**/ui/StoreAssetsTest*")
                 test.systemProperty("workorder.screenshots", if (project.hasProperty("screenshots")) "1" else "")
                 test.systemProperty("workorder.screenshotDir", layout.buildDirectory.dir("screenshots").get().asFile.path)
+                test.systemProperty("workorder.storeDir", layout.buildDirectory.dir("store").get().asFile.path)
             }
         }
     }

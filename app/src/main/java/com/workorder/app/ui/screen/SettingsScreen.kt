@@ -1,5 +1,7 @@
 package com.workorder.app.ui.screen
 
+import androidx.compose.material.icons.outlined.PrivacyTip
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalDensity
@@ -232,10 +234,20 @@ private fun SettingsOverview(
         SettingsRow(Icons.Outlined.Storage, "Резервная копия", "Экспорт и импорт базы, перенос настроек") {
             onOpen(SettingsSection.DATA)
         }
+    }
+    // Ссылки открываются в браузере: разрешение на интернет приложению не нужно.
+    val uriHandler = LocalUriHandler.current
+    SettingsGroup("О приложении") {
         SettingsRow(Icons.Outlined.Feedback, "Обратная связь", "Ошибка или идея — разработчику", onClick = onFeedback)
-        val uriHandler = LocalUriHandler.current
+        SettingsRow(Icons.Outlined.FavoriteBorder, "Поддержать разработчика", "По желанию — все функции бесплатны") {
+            runCatching { uriHandler.openUri(DONATE_URL) }
+        }
         SettingsRow(Icons.Outlined.Code, "Наряд на GitHub", "Исходный код, новости и выпуски") {
             runCatching { uriHandler.openUri(GITHUB_URL) }
+        }
+        // RuStore требует, чтобы политика была доступна и в самом приложении.
+        SettingsRow(Icons.Outlined.PrivacyTip, "Конфиденциальность", "Политика: данные хранятся только на телефоне") {
+            runCatching { uriHandler.openUri(PRIVACY_URL) }
         }
     }
     Text(
@@ -288,7 +300,8 @@ private fun SettingsRow(
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // До двух строк: при крупном шрифте «Поддержать разработчика» обрезалось.
+            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
                 summary.noOrphans(),
                 style = MaterialTheme.typography.bodySmall,
@@ -321,6 +334,10 @@ private fun Badge(text: String) {
 }
 
 private const val GITHUB_URL = "https://github.com/Levug/android-workorder"
+private const val PRIVACY_URL = "https://github.com/Levug/android-workorder/blob/main/PRIVACY.md"
+
+/** Добровольная поддержка: ничего не открывает и не продаёт — иначе это была бы оплата в обход RuStore. */
+private const val DONATE_URL = "https://pay.cloudtips.ru/p/21a61187"
 
 /** Переключатели раздела «Эксперименты» — для счётчика «N из M» в списке разделов. */
 private fun experimentSwitches(settings: Settings) = listOf(

@@ -677,7 +677,8 @@ private fun DayHeroCard(
                     onClick = onSpecializationClick
                 )
             }
-            Box(Modifier.padding(start = 4.dp)) { CompTimeBalance(state) }
+            // Пустой контейнер добавлял отступ колонки — баланс сам решает, показываться ли.
+            CompTimeBalance(state, Modifier.padding(start = 4.dp))
         }
     }
 }
@@ -766,8 +767,9 @@ private fun DayTypeSheet(state: WorkDayUiState, onPick: (WorkDayType) -> Unit, o
         DayTypeOption(WorkDayType.MANUAL, "Ручной", "свои часы и коэффициент", Icons.Outlined.Edit)
     )
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        // Прокрутка: на невысоком экране последний ряд плиток сжимался и обрезал описание.
         Column(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 28.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -809,7 +811,8 @@ private fun DayTypeGroup(title: String, options: List<DayTypeOption>, selected: 
         BoxWithConstraints(Modifier.fillMaxWidth()) {
             // Три плитки в ряд — только когда в плитку влезает самое длинное слово, иначе две:
             // при крупном шрифте на узком экране «По графику» и «Праздник» рвались посередине.
-            val columns = if (maxWidth / LocalDensity.current.fontScale >= 300.dp) 3 else 2
+            // Порог по ширине «коэффициент» в описании плитки: на 360 dp оно рвалось уже при обычном шрифте.
+            val columns = if (maxWidth / LocalDensity.current.fontScale >= 340.dp) 3 else 2
             Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 options.chunked(columns).forEach { row ->
                     Row(
@@ -861,7 +864,7 @@ private fun DayTypeTile(option: DayTypeOption, selected: Boolean, onClick: () ->
 
 /** Баланс отгулов в карточке дня — только у дней, связанных с отгулами; остальное время он на плитке «Отгул». */
 @Composable
-private fun CompTimeBalance(state: WorkDayUiState) {
+private fun CompTimeBalance(state: WorkDayUiState, modifier: Modifier = Modifier) {
     val related = state.dayType == WorkDayType.COMP_WORK || state.dayType == WorkDayType.COMP_OFF || state.compOffHours > 0
     if (!related) return
     val change = when {
@@ -874,7 +877,7 @@ private fun CompTimeBalance(state: WorkDayUiState) {
         "Баланс отгулов: ${state.compTimeBalance.formatNumber()} ч$change".noOrphans(),
         style = MaterialTheme.typography.bodySmall,
         color = if (state.compTimeBalance < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.semantics {
+        modifier = modifier.semantics {
             contentDescription = "Баланс отгулов ${state.compTimeBalance.formatNumber()} часов"
         }
     )
