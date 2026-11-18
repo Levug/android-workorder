@@ -27,6 +27,8 @@ import java.time.YearMonth
 class AppContainer(context: Context) {
     private val database = AppDatabase.getDatabase(context)
 
+    val dayWidgets = com.workorder.app.widget.DayWidgetController(context.applicationContext, database)
+
     val settingsRepository = SettingsRepository(database.settingsDao())
     val workOrderRepository = WorkOrderRepository(database, settingsRepository)
     val operationRepository = OperationRepository(database.operationDao())
@@ -110,5 +112,6 @@ class WorkOrderApp : Application() {
     override fun onCreate() {
         super.onCreate()
         if (BuildConfig.ENABLE_WEAR_SYNC) container.wearSyncManager.start()
+        container.dayWidgets.start()
     }
 }

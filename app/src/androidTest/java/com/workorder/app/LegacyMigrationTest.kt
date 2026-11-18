@@ -25,6 +25,7 @@ class LegacyMigrationTest {
     @Test fun versionThreeEightDatabaseSurvivesUpgrade() = verifyMigration(13)
     @Test fun versionThreeNineDatabaseSurvivesUpgrade() = verifyMigration(14)
     @Test fun versionFourZeroDatabaseSurvivesUpgrade() = verifyMigration(15)
+    @Test fun versionFourTwoThreeDatabaseSurvivesUpgrade() = verifyMigration(16)
 
     private fun verifyMigration(version: Int) = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -71,7 +72,8 @@ class LegacyMigrationTest {
             assertFalse(data.settings!!.daySpecializationEnabled)
             assertEquals(if (version >= 10) "Наладка" else "", data.workDays.single().specialization)
             assertTrue(data.workDays.single().isRecorded)
-            assertEquals(16, migrated.openHelper.readableDatabase.version)
+            assertEquals(17, migrated.openHelper.readableDatabase.version)
+            assertEquals(0.0, data.settings!!.sickLeaveDailyAmount, 0.0)
             assertEquals(0.0, data.workDays.single().compOffHours, 0.0)
             assertTrue(data.settings!!.bankEnabled && data.settings!!.quickAddEnabled)
             assertEquals(2.0, data.workDays.single().manualMultiplier, 0.0)

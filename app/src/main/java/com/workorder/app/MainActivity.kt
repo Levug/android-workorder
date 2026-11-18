@@ -1,6 +1,7 @@
 package com.workorder.app
 
 import android.app.UiModeManager
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
@@ -22,6 +23,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +48,7 @@ import com.workorder.app.ui.navigation.shouldShowBottomBar
 import com.workorder.app.ui.screen.CalendarScreen
 import com.workorder.app.ui.screen.OperationsScreen
 import com.workorder.app.ui.screen.ReportsScreen
+import com.workorder.app.ui.screen.SettingsSection
 import com.workorder.app.ui.screen.SettingsScreen
 import com.workorder.app.ui.screen.WorkDayScreen
 import com.workorder.app.ui.theme.WorkOrderTheme
@@ -56,8 +60,29 @@ import com.workorder.app.ui.viewmodel.SettingsViewModel
 import com.workorder.app.ui.viewmodel.WorkDayViewModel
 import kotlinx.coroutines.delay
 import java.time.LocalDate
+import com.workorder.app.widget.ACTION_WIDGET_ADD
+import com.workorder.app.widget.ACTION_WIDGET_DATE
+import com.workorder.app.widget.ACTION_WIDGET_CALENDAR
+import com.workorder.app.widget.widgetAction
+import com.workorder.app.widget.widgetDate
+import java.time.YearMonth
 
 class MainActivity : ComponentActivity() {
+    private var widgetAction by mutableStateOf<String?>(null)
+    private var widgetDate by mutableStateOf<String?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        widgetDate = intent.widgetDate()?.toString()
+        widgetAction = intent.widgetAction()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("widgetAction", widgetAction)
+        outState.putString("widgetDate", widgetDate)
+        super.onSaveInstanceState(outState)
+    }
 
     /**
      * Стартовый экран системы рисуется по ночному режиму до запуска приложения, поэтому при своей
@@ -89,6 +114,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        widgetAction = if (savedInstanceState != null) savedInstanceState.getString("widgetAction")
+            else intent.widgetAction()
+        widgetDate = if (savedInstanceState != null) savedInstanceState.getString("widgetDate")
+            else intent.widgetDate()?.toString()
 
         val container = (application as WorkOrderApp).container
         val settingsRepository = container.settingsRepository
@@ -126,6 +155,31 @@ class MainActivity : ComponentActivity() {
                     val navBackStackEntry by navController.currentBackStackEntryAsState()
                     val currentRoute = navBackStackEntry?.destination?.route
 
+                    LaunchedEffect(widgetAction, navBackStackEntry) {
+                        val action = widgetAction ?: return@LaunchedEffect
+                        // NavHost находится в subcomposition Scaffold и может ещё не установить граф.
+                        if (navBackStackEntry == null) return@LaunchedEffect
+                        val date = widgetDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                        val target = when (action) {
+                            ACTION_WIDGET_DATE -> date?.let { Screen.WorkDay.createRoute(it.toString()) } ?: Screen.Today.route
+                            ACTION_WIDGET_CALENDAR -> {
+                                container.selectedMonth.value = YearMonth.now()
+                                Screen.Calendar.route
+                            }
+                            else -> Screen.Today.route
+                        }
+                        navController.navigate(target) {
+                            popUpTo(navController.graph.startDestinationId)
+                            launchSingleTop = true
+                        }
+                        if (target == Screen.Today.route) {
+                            navController.currentBackStackEntry?.savedStateHandle?.set("widgetAdd", action == ACTION_WIDGET_ADD)
+                        }
+                        widgetAction = null
+                        widgetDate = null
+                        intent.action = null
+                    }
+
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
                         bottomBar = {
@@ -158,12 +212,13 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     ) { innerPadding ->
-                        fun openTab(screen: Screen) {
-                            navController.navigate(screen.route) {
+                        fun openSettings(section: SettingsSection) {
+                            navController.navigate(Screen.Settings.route) {
                                 popUpTo(navController.graph.startDestinationId) { saveState = true }
                                 launchSingleTop = true
                                 restoreState = true
                             }
+                            navController.currentBackStackEntry?.savedStateHandle?.set("settingsSection", section)
                         }
                         NavHost(
                             navController = navController,
@@ -171,7 +226,9 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.padding(innerPadding)
                         ) {
                             // Вкладка «Сегодня»: наряд на текущую дату
-                            composable(Screen.Today.route) {
+                            composable(Screen.Today.route) { entry ->
+                                val widgetAdd by entry.savedStateHandle.getStateFlow("widgetAdd", false)
+                                    .collectAsStateWithLifecycle()
                                 val today by rememberCurrentLocalDate()
                                 key(today) {
                                     val vm = viewModel<WorkDayViewModel>(
@@ -185,7 +242,9 @@ class MainActivity : ComponentActivity() {
                                             if (date != today) navController.navigate(Screen.WorkDay.createRoute(date.toString()))
                                         },
                                         onOpenCatalog = { navController.navigate(Screen.Operations.route) },
-                                        onOpenSettings = { openTab(Screen.Settings) }
+                                        onOpenBackup = { openSettings(SettingsSection.DATA) },
+                                        openAddRequested = widgetAdd,
+                                        onAddRequestConsumed = { entry.savedStateHandle["widgetAdd"] = false }
                                     )
                                 }
                             }
@@ -224,14 +283,18 @@ class MainActivity : ComponentActivity() {
                                 ReportsScreen(
                                     viewModel = vm,
                                     onOpenDay = { date -> navController.navigate(Screen.WorkDay.createRoute(date.toString())) },
-                                    onOpenSettings = { openTab(Screen.Settings) }
+                                    onOpenSettings = { openSettings(SettingsSection.PAY) }
                                 )
                             }
 
-                            composable(Screen.Settings.route) {
+                            composable(Screen.Settings.route) { entry ->
+                                val requestedSection by entry.savedStateHandle.getStateFlow<SettingsSection?>("settingsSection", null)
+                                    .collectAsStateWithLifecycle()
                                 val vm = viewModel<SettingsViewModel>(factory = SettingsViewModel.Factory)
                                 SettingsScreen(
                                     viewModel = vm,
+                                    requestedSection = requestedSection,
+                                    onSectionOpened = { entry.savedStateHandle["settingsSection"] = null },
                                     onNavigateToOperations = {
                                         navController.navigate(Screen.Operations.route)
                                     }

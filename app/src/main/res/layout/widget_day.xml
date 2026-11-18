@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent" android:layout_height="match_parent">
+    <ImageView android:id="@+id/widget_background"
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:src="@drawable/widget_surface" android:scaleType="fitXY"
+        android:importantForAccessibility="no" android:contentDescription="@null" />
+    <LinearLayout android:id="@+id/widget_content"
+        android:layout_width="match_parent" android:layout_height="match_parent"
+        android:orientation="vertical" android:padding="12dp">
+        <TextView android:id="@+id/widget_date"
+            android:layout_width="match_parent" android:layout_height="20dp"
+            android:text="@string/widget_today" android:textSize="12sp"
+            android:textColor="#414754" android:maxLines="1" android:ellipsize="end" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="1" android:gravity="center_vertical" android:orientation="horizontal"
+            android:baselineAligned="false">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:orientation="vertical" android:paddingEnd="4dp">
+                <TextView android:id="@+id/widget_hours" style="@style/WidgetMetric" android:text="—" />
+                <TextView android:id="@+id/widget_hours_label" style="@style/WidgetCaption" android:text="@string/widget_hours" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:orientation="vertical">
+                <TextView android:id="@+id/widget_produced" style="@style/WidgetMetric" android:text="—" />
+                <TextView android:id="@+id/widget_produced_label" style="@style/WidgetCaption" android:text="@string/widget_produced" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/widget_efficiency_group"
+                android:layout_width="0dp" android:layout_height="wrap_content"
+                android:layout_weight="1" android:orientation="vertical" android:paddingStart="4dp" android:visibility="gone">
+                <TextView android:id="@+id/widget_efficiency" style="@style/WidgetMetric" android:text="—" />
+                <TextView android:id="@+id/widget_efficiency_label" style="@style/WidgetCaption" android:text="@string/widget_efficiency" />
+            </LinearLayout>
+        </LinearLayout>
+        <TextView android:id="@+id/widget_status"
+            android:layout_width="match_parent" android:layout_height="22dp"
+            android:text="@string/widget_open_hint" android:textSize="11sp" android:gravity="center_vertical"
+            android:textColor="#414754" android:maxLines="1" android:ellipsize="end"
+            android:autoSizeTextType="uniform" android:autoSizeMinTextSize="9sp" android:autoSizeMaxTextSize="11sp" />
+        <FrameLayout android:id="@+id/widget_add_container"
+            android:layout_width="match_parent" android:layout_height="40dp" android:layout_marginTop="4dp">
+            <ImageView android:id="@+id/widget_button_background"
+                android:layout_width="match_parent" android:layout_height="match_parent"
+                android:src="@drawable/widget_button" android:scaleType="fitXY"
+                android:importantForAccessibility="no" android:contentDescription="@null" />
+            <TextView android:id="@+id/widget_add"
+                android:layout_width="match_parent" android:layout_height="match_parent"
+                android:text="@string/widget_add" android:contentDescription="@string/widget_add_description"
+                android:textSize="14sp" android:textColor="#0B305F" android:gravity="center"
+                android:paddingHorizontal="8dp" android:maxLines="1" android:ellipsize="end"
+                android:autoSizeTextType="uniform" android:autoSizeMinTextSize="11sp" android:autoSizeMaxTextSize="14sp" />
+        </FrameLayout>
+    </LinearLayout>
+</FrameLayout>

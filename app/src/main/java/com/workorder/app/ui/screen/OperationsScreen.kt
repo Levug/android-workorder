@@ -1,6 +1,8 @@
 package com.workorder.app.ui.screen
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,6 +42,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -113,7 +117,7 @@ fun OperationsScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            if (operations.isNotEmpty()) FloatingActionButton(
                 onClick = { editorFor = Operation(id = 0, name = "", durationHours = 0.0) }
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Добавить операцию")
@@ -124,8 +128,8 @@ fun OperationsScreen(
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 EmptyState(
                     icon = Icons.Outlined.Handyman,
-                    title = "Каталог пуст",
-                    subtitle = "Добавьте операции с нормами времени, чтобы вносить их в наряды",
+                    title = "Ваши операции",
+                    subtitle = "Сохраните название и норму времени один раз. В наряде останется указать количество.",
                     action = {
                         Button(onClick = { editorFor = Operation(id = 0, name = "", durationHours = 0.0) }) {
                             Text("Добавить операцию")
@@ -146,7 +150,7 @@ fun OperationsScreen(
             if (ordered.size > 1) {
                 item(key = "hint") {
                     Text(
-                        "Касание — изменить. Потяните за ≡, чтобы поменять порядок: он же используется в наряде, отчётах и на часах.",
+                        "Нажмите на операцию, чтобы изменить её. Потяните за ≡, чтобы переместить.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -338,28 +342,35 @@ private fun OperationCard(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun OperationEditorSheet(
+internal fun OperationEditorSheet(
     operation: Operation,
     onSave: (name: String, durationHours: Double, grade: Int) -> Unit,
     onArchive: (() -> Unit)?,
     onDelete: (() -> Unit)?,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    saveLabel: String = "Сохранить",
+    saving: Boolean = false
 ) {
-    var name by remember { mutableStateOf(operation.name) }
-    var durationText by remember {
+    var name by rememberSaveable(operation.id) { mutableStateOf(operation.name) }
+    var durationText by rememberSaveable(operation.id) {
         mutableStateOf(
             if (operation.durationHours > 0) operation.durationHours.toString().removeSuffix(".0") else ""
         )
     }
     val parsedDuration = durationText.replace(',', '.').toDoubleOrNull()
-    var grade by remember { mutableStateOf(operation.grade.coerceIn(3, 6)) }
+    var grade by rememberSaveable(operation.id) { mutableStateOf(operation.grade.coerceIn(3, 6)) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = { if (!saving) onDismiss() },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -372,6 +383,7 @@ private fun OperationEditorSheet(
                 value = name,
                 onValueChange = { name = it },
                 label = { Text("Название") },
+                placeholder = { Text("Например, сборка детали") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -379,10 +391,10 @@ private fun OperationEditorSheet(
             OutlinedTextField(
                 value = durationText,
                 onValueChange = { durationText = it },
-                label = { Text("Норма времени, ч за штуку") },
+                label = { Text("Норма на штуку, ч") },
                 supportingText = if (operation.id != 0L) {
                     { Text("Изменение нормы пересчитает нормо-часы и прошлых записей") }
-                } else null,
+                } else { { Text("Например, 0,5 ч для операции на 30 минут") } },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
@@ -401,10 +413,10 @@ private fun OperationEditorSheet(
 
             Button(
                 onClick = { parsedDuration?.let { onSave(name, it, grade) } },
-                enabled = name.isNotBlank() && parsedDuration != null && parsedDuration > 0,
+                enabled = !saving && name.isNotBlank() && parsedDuration != null && parsedDuration.isFinite() && parsedDuration > 0,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Сохранить")
+                Text(saveLabel)
             }
 
             if (onArchive != null || onDelete != null) {

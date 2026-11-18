@@ -64,7 +64,10 @@ data class Settings(
     val calendarHeatEnabled: Boolean = true,
     /** Ряд «Быстро добавить» на экране наряда. */
     @ColumnInfo(defaultValue = "1")
-    val quickAddEnabled: Boolean = true
+    val quickAddEnabled: Boolean = true,
+    /** Ожидаемая выплата на руки за календарный день больничного, ₽. 0 — не задана. */
+    @ColumnInfo(defaultValue = "0")
+    val sickLeaveDailyAmount: Double = 0.0
 )
 
 /** «1, 5, 10, 17» → [1, 5, 10, 17]; null, если чисел нет, больше 6, повторяются или вне 1…9999. */

@@ -373,4 +373,45 @@ class SalaryCalculatorTest {
         assertEquals(1, SalaryCalculator.calculate(listOf(unpaid), settings, 184.0).unpaidDays)
         assertEquals(0.0, unpaid.fundHours, 0.0)
     }
+
+    @Test fun sickLeaveExcludesSavedHoursFromNormalAndExperimentalAdvance() {
+        val month = YearMonth.of(2026, 7)
+        val sick = WorkDay(date = "2026-07-08", totalHours = 8.0, dayType = WorkDayType.SICK_LEAVE, compOffHours = 4.0)
+        val sickWeekend = WorkDay(date = "2026-07-11", totalHours = 0.0, dayType = WorkDayType.SICK_LEAVE, isRecorded = false)
+        val days = listOf(sick, sickWeekend)
+        val norm = SalaryCalculator.scheduledNormHours(month, settings, days)
+        assertEquals(SalaryCalculator.scheduledNormHours(month, settings) - 8.0, norm, 0.0)
+        assertEquals(0.0, sick.fundHours, 0.0)
+        assertEquals(false, sick.isInHourFund)
+        for (advanceFill in listOf(false, true)) {
+            val preferences = settings.copy(advanceFillEnabled = advanceFill)
+            val result = SalaryCalculator.calculate(days, preferences, norm)
+            assertEquals(2, result.sickLeaveDays)
+            assertEquals(0.0, result.fullSalary, 0.0)
+            assertEquals(0.0, result.advanceHours, 0.0)
+            assertEquals(0.0, result.compOffHours, 0.0)
+            val forecast = SalaryCalculator.forecast(month, days, preferences, norm)
+            assertEquals(2, forecast.sickLeaveDays)
+            assertEquals(norm * preferences.hourlyRate, forecast.fullSalary, 0.0)
+            assertEquals(2, SalaryCalculator.calculate(days, preferences, 0.0).sickLeaveDays)
+        }
+    }
+
+    @Test fun sickLeaveEstimateCountsMarkedCalendarDaysAndStaysSeparateFromSalary() {
+        val month = YearMonth.of(2026, 7)
+        val days = listOf(
+            WorkDay(date = "2026-07-10", totalHours = 0.0, dayType = WorkDayType.SICK_LEAVE, isRecorded = false),
+            WorkDay(date = "2026-07-11", totalHours = 8.0, dayType = WorkDayType.SICK_LEAVE),
+            WorkDay(date = "2026-07-13", totalHours = 8.0)
+        )
+        val preferences = settings.copy(sickLeaveDailyAmount = 1200.25)
+        val withoutEstimate = SalaryCalculator.calculate(days, settings, 160.0)
+        val withEstimate = SalaryCalculator.calculate(days, preferences, 160.0)
+        assertEquals(null, withoutEstimate.sickLeaveEstimate)
+        assertEquals(2400.5, withEstimate.sickLeaveEstimate!!, 0.0)
+        assertEquals(withoutEstimate, withEstimate.copy(sickLeaveEstimate = null))
+        assertEquals(2400.5, SalaryCalculator.calculate(days, preferences, 0.0).sickLeaveEstimate!!, 0.0)
+        assertEquals(2400.5, SalaryCalculator.forecast(month, days, preferences, 160.0).sickLeaveEstimate!!, 0.0)
+        assertEquals(null, SalaryCalculator.calculate(days.takeLast(1), preferences, 160.0).sickLeaveEstimate)
+    }
 }

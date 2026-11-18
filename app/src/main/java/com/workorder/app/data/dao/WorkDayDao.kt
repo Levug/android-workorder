@@ -22,12 +22,15 @@ interface WorkDayDao {
     @Query("SELECT * FROM work_days WHERE date LIKE :yearMonth || '-%' ORDER BY date ASC")
     fun observeByMonth(yearMonth: String): Flow<List<WorkDay>>
 
+    @Query("SELECT * FROM work_days WHERE date LIKE :yearMonth || '-%' ORDER BY date ASC")
+    suspend fun getByMonth(yearMonth: String): List<WorkDay>
+
     /** Накоплено выходами за отгул минус списано отгулами (целыми днями и на часть дня), за всё время. */
     @Query(
         """
         SELECT COALESCE(SUM(CASE dayType WHEN 'COMP_WORK' THEN totalHours WHEN 'COMP_OFF' THEN -totalHours ELSE 0 END)
             - SUM(compOffHours), 0)
-        FROM work_days WHERE isRecorded = 1
+        FROM work_days WHERE isRecorded = 1 AND dayType <> 'SICK_LEAVE'
         """
     )
     fun observeCompTimeBalance(): Flow<Double>

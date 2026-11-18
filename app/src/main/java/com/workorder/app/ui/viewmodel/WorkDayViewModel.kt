@@ -49,9 +49,6 @@ data class EntryRemovedEvent(
 /** Операция и размер партии для добавления в одно касание. */
 data class QuickAction(val operation: Operation, val quantity: Int)
 
-/** Первичная настройка: показывается на вкладке «Сегодня», пока не пройдена или не скрыта. */
-data class SetupState(val rateDone: Boolean, val operationsDone: Boolean)
-
 data class WorkDayUiState(
     val date: LocalDate,
     val isToday: Boolean = false,
@@ -78,6 +75,7 @@ data class WorkDayUiState(
     val summaryQuickAddEnabled: Boolean = true,
     /** Выходной по графику (без учёта ручного типа дня). */
     val scheduledOff: Boolean = false,
+    val operations: List<Operation> = emptyList(),
     val totals: List<OperationTotal> = emptyList(),
     val entries: List<EntryWithOperation> = emptyList(),
     val totalUnits: Int = 0,
@@ -87,7 +85,6 @@ data class WorkDayUiState(
     val lastQuantities: Map<Long, Int> = emptyMap(),
     /** Недавние операции: первая — «повторить последнее». */
     val recent: List<QuickAction> = emptyList(),
-    val setup: SetupState? = null,
     /** Подсказку «удерживайте для выбора количества» уже видели — больше не показываем. */
     val quickHintSeen: Boolean = true,
     val isLoading: Boolean = true
@@ -99,9 +96,9 @@ data class WorkDayUiState(
  */
 class WorkDayViewModel(
     private val workOrderRepository: WorkOrderRepository,
-    operationRepository: OperationRepository,
+    private val operationRepository: OperationRepository,
     settingsRepository: SettingsRepository,
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     private val preferences: SharedPreferences? = null
 ) : ViewModel() {
 
@@ -111,18 +108,7 @@ class WorkDayViewModel(
 
     val date: LocalDate = LocalDate.parse(dateString)
 
-    /** Каталог операций для выбора: без архивных. */
-    val operations: StateFlow<List<Operation>> = operationRepository.observeActive()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    private data class UiFlags(val setupHidden: Boolean, val quickHintSeen: Boolean)
-
-    private val flags = MutableStateFlow(
-        UiFlags(
-            setupHidden = preferences?.getBoolean(KEY_SETUP_HIDDEN, false) ?: true,
-            quickHintSeen = preferences?.getBoolean(KEY_QUICK_HINT_SEEN, false) ?: true
-        )
-    )
+    private val quickHintSeen = MutableStateFlow(preferences?.getBoolean(KEY_QUICK_HINT_SEEN, false) ?: true)
 
     private data class DayData(
         val day: WorkDay?,
@@ -134,7 +120,7 @@ class WorkDayViewModel(
         val settings: Settings,
         val operations: List<Operation>,
         val recent: List<RecentOperation>,
-        val flags: UiFlags,
+        val quickHintSeen: Boolean,
         val compTimeBalance: Double
     )
 
@@ -147,9 +133,9 @@ class WorkDayViewModel(
         ),
         combine(
             settingsRepository.observe(),
-            operations,
+            operationRepository.observeActive(),
             workOrderRepository.observeRecentOperations(),
-            flags,
+            quickHintSeen,
             workOrderRepository.observeCompTimeBalance(),
             ::Context
         )
@@ -179,6 +165,7 @@ class WorkDayViewModel(
             compTimeBalance = context.compTimeBalance,
             summaryQuickAddEnabled = settings.summaryQuickAddEnabled,
             scheduledOff = !SalaryCalculator.isScheduledWorkDay(date, settings),
+            operations = context.operations,
             totals = data.totals,
             entries = data.entries,
             totalUnits = data.totals.sumOf { it.totalCount },
@@ -186,11 +173,7 @@ class WorkDayViewModel(
             quickAmounts = settings.quickAmountList,
             lastQuantities = context.recent.associate { it.operationId to it.lastQuantity },
             recent = recent,
-            setup = SetupState(
-                rateDone = settings.hourlyRate > 0,
-                operationsDone = context.operations.isNotEmpty()
-            ).takeIf { isToday && !context.flags.setupHidden && !(it.rateDone && it.operationsDone) },
-            quickHintSeen = context.flags.quickHintSeen,
+            quickHintSeen = context.quickHintSeen,
             isLoading = false
         )
     }.stateIn(
@@ -211,7 +194,7 @@ class WorkDayViewModel(
         if (quantity == 0) return
         viewModelScope.launch {
             val entryId = workOrderRepository.addEntry(dateString, operationId, quantity)
-            val name = operations.value.find { it.id == operationId }?.name ?: ""
+            val name = uiState.value.operations.find { it.id == operationId }?.name ?: ""
             _batchAdded.value = BatchAddedEvent(operationId, name, quantity, entryId)
         }
     }
@@ -302,20 +285,36 @@ class WorkDayViewModel(
         }
     }
 
-    fun hideSetup() {
-        preferences?.edit()?.putBoolean(KEY_SETUP_HIDDEN, true)?.apply()
-        flags.value = flags.value.copy(setupHidden = true)
+    val createdOperationId = savedStateHandle.getStateFlow<Long?>("createdOperationId", null)
+    private val _creatingOperation = MutableStateFlow(false)
+    val creatingOperation = _creatingOperation.asStateFlow()
+
+    fun createOperation(name: String, duration: Double, grade: Int) {
+        if (_creatingOperation.value || createdOperationId.value != null) return
+        _creatingOperation.value = true
+        viewModelScope.launch {
+            try {
+                savedStateHandle["createdOperationId"] = operationRepository.save(
+                    Operation(name = name.trim(), durationHours = duration, grade = grade)
+                )
+            } catch (e: android.database.SQLException) {
+                _error.value = "Не удалось сохранить операцию. Попробуйте ещё раз."
+            } finally {
+                _creatingOperation.value = false
+            }
+        }
     }
+
+    fun consumeCreatedOperation() { savedStateHandle["createdOperationId"] = null }
 
     /** Первое долгое нажатие на быструю кнопку — подсказка больше не нужна. */
     fun markQuickHintSeen() {
-        if (flags.value.quickHintSeen) return
+        if (quickHintSeen.value) return
         preferences?.edit()?.putBoolean(KEY_QUICK_HINT_SEEN, true)?.apply()
-        flags.value = flags.value.copy(quickHintSeen = true)
+        quickHintSeen.value = true
     }
 
     companion object {
-        private const val KEY_SETUP_HIDDEN = "setupHidden"
         private const val KEY_QUICK_HINT_SEEN = "quickHintSeen"
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {

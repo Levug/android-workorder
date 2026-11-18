@@ -64,8 +64,10 @@ class StoreAssetsTest {
 
     @Test @Config(qualifiers = "w360dp-h640dp-xxhdpi")
     fun phoneScreens() {
-        seed()
         ActivityScenario.launch(MainActivity::class.java).use {
+            waitForText("Записать часы")
+            shot("0-first-shift.png")
+            seed()
             waitForText("выработка")
             shot("1-today.png")
             click("Рабочий день")
@@ -73,11 +75,15 @@ class StoreAssetsTest {
             // Выбор уже выбранной плитки закрывает шторку.
             click("Рабочий", exact = true)
             click("Календарь")
+            waitForText("смен")
             shot("3-calendar.png")
             click("Отчёты")
             waitForText("Заработано")
             shot("4-reports.png")
             click("Настройки")
+            waitForText("Оплата и смена")
+            click("Оплата и смена")
+            waitForText("Ставки")
             shot("5-settings.png")
         }
     }
@@ -105,13 +111,14 @@ class StoreAssetsTest {
             val date = month.plusDays(day.toLong())
             val weekend = date.dayOfWeek.value >= 6
             when {
+                day == 4 -> work.setDayType(date.toString(), WorkDayType.SICK_LEAVE)
                 weekend && day % 9 == 5 -> { work.setDayType(date.toString(), WorkDayType.COMP_WORK); work.setDayHours(date.toString(), 6.0) }
                 weekend -> Unit
                 day % 7 == 2 -> work.setDayHours(date.toString(), 10.0)
                 day % 11 == 4 -> work.setDayType(date.toString(), WorkDayType.COMP_OFF)
                 else -> work.setDayHours(date.toString(), 8.0)
             }
-            if (!weekend) work.addEntry(date.toString(), ids[day % 3], 6 + day % 9)
+            if (!weekend && day != 4) work.addEntry(date.toString(), ids[day % 3], 6 + day % 9)
         }
     }
 
@@ -122,8 +129,9 @@ class StoreAssetsTest {
     }
 
     private fun waitForText(text: String) {
-        runCatching {
-            compose.waitUntil(10_000) { compose.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) {
+            ShadowLooper.idleMainLooper()
+            compose.onAllNodes(hasText(text, substring = true)).fetchSemanticsNodes().isNotEmpty()
         }
     }
 

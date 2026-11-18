@@ -269,7 +269,7 @@ class DataTransferUiTest {
             activity.setContent { WorkOrderTheme(interfaceScale = 1.3) { WorkDayScreen(dayVm) } }
         }
         compose.waitUntil { !dayVm.uiState.value.isLoading }
-        compose.onNodeWithText("Добавить специализацию").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Добавить специализацию").performScrollTo().performClick()
         compose.onNodeWithText("Например: сборка, наладка").performTextInput("Наладка сложного оборудования и проверка")
         compose.onNodeWithText("Сохранить", substring = false).performClick()
         compose.waitUntil { dayVm.uiState.value.specialization.isNotEmpty() }
@@ -348,15 +348,15 @@ class DataTransferUiTest {
             activity.setContent { WorkOrderTheme { WorkDayScreen(dayVm) } }
         }
         compose.waitUntil { !dayVm.uiState.value.isLoading }
-        compose.onNodeWithText("Добавить специализацию").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Добавить специализацию").performScrollTo().performClick()
         compose.onNodeWithText("Например: сборка, наладка").performTextInput("Подготовка оснастки")
         compose.onNodeWithText("Сохранить", substring = false).performClick()
         compose.waitUntil { dayVm.uiState.value.specialization == "Подготовка оснастки" }
         assertFalse(dayVm.uiState.value.isRecorded)
         assertEquals(0.0, dayVm.uiState.value.dayHours, 0.0)
         assertEquals(0, dayVm.uiState.value.totalUnits)
-        compose.onNodeWithText("План · смена ещё не отмечена").assertExists()
-        compose.onNodeWithText("указать часы").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Смена запланирована").assertExists()
+        compose.onNodeWithText("Записать часы").performScrollTo().assertIsDisplayed()
         capture("specialization-plan-editor.png")
     }
 

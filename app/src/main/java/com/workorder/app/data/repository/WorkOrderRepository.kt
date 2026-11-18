@@ -140,6 +140,7 @@ class WorkOrderRepository(
         require(hours + (compOffHours ?: 0.0) <= 24.0) { "В сутках не больше 24 часов" }
         db.withTransaction {
             val day = workDayDao.getByDate(date)
+            require(day?.dayType != WorkDayType.SICK_LEAVE) { "Чтобы внести часы, измените тип дня" }
             if (day != null && compOffHours != null && compOffHours > 0) {
                 require(day.dayType.allowsPartialCompOff) { "Отгул на часть дня — только для дней «По графику» и «Рабочий»" }
             }
@@ -239,6 +240,11 @@ class WorkOrderRepository(
                     else -> Unit
                 }
             } else {
+                // На больничном сохраняем прежние данные, чтобы их можно было вернуть сменой типа дня.
+                if (dayType == WorkDayType.SICK_LEAVE) {
+                    workDayDao.update(day.copy(dayType = dayType))
+                    return@withTransaction
+                }
                 val changed = day.copy(
                     dayType = dayType,
                     manualSingleHours = 0.0,
@@ -275,7 +281,8 @@ class WorkOrderRepository(
         val existing = workDayDao.getByDate(date)
         if (existing != null) {
             if (!existing.isRecorded) {
-                workDayDao.update(existing.copy(totalHours = defaultHours, isRecorded = true))
+                val hours = if (existing.dayType == WorkDayType.SICK_LEAVE) 0.0 else defaultHours
+                workDayDao.update(existing.copy(totalHours = hours, isRecorded = true))
             }
             return existing.id
         }

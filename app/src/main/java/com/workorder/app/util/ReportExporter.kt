@@ -37,7 +37,9 @@ class ReportExporter(private val context: Context) {
         totalHours: Double,
         totalProjectHours: Double,
         salary: Double,
-        totals: List<OperationTotal>
+        totals: List<OperationTotal>,
+        sickLeaveDays: Int = 0,
+        sickLeaveEstimate: Double? = null
     ): File? {
         return try {
             val file = exportFile("workorder_report_$yearMonth.pdf")
@@ -65,6 +67,10 @@ class ReportExporter(private val context: Context) {
                 document.add(Paragraph("Всего рабочих часов: ${format(totalHours)} ч"))
                 document.add(Paragraph("Выработка (нормо-часы): ${format(totalProjectHours)} ч"))
                 document.add(Paragraph("Зарплата: ${format(salary)} руб."))
+                if (sickLeaveDays > 0) document.add(Paragraph("Дни больничного: $sickLeaveDays"))
+                if (sickLeaveEstimate != null) {
+                    document.add(Paragraph("Больничный, оценка на руки: ${format(sickLeaveEstimate)} руб."))
+                }
                 document.add(Paragraph("\n"))
 
                 if (totals.isNotEmpty()) {
@@ -100,7 +106,9 @@ class ReportExporter(private val context: Context) {
         totalHours: Double,
         totalProjectHours: Double,
         salary: Double,
-        totals: List<OperationTotal>
+        totals: List<OperationTotal>,
+        sickLeaveDays: Int = 0,
+        sickLeaveEstimate: Double? = null
     ): File? {
         return try {
             val file = exportFile("workorder_report_$yearMonth.csv")
@@ -115,6 +123,10 @@ class ReportExporter(private val context: Context) {
                     writer.writeNext(arrayOf("Всего рабочих часов", format(totalHours)))
                     writer.writeNext(arrayOf("Выработка (нормо-часы)", format(totalProjectHours)))
                     writer.writeNext(arrayOf("Зарплата", format(salary)))
+                    if (sickLeaveDays > 0) writer.writeNext(arrayOf("Дни больничного", sickLeaveDays.toString()))
+                    if (sickLeaveEstimate != null) {
+                        writer.writeNext(arrayOf("Больничный, оценка на руки, руб.", format(sickLeaveEstimate)))
+                    }
                     writer.writeNext(arrayOf(""))
 
                     if (totals.isNotEmpty()) {

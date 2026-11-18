@@ -2,6 +2,7 @@ package com.workorder.app.ui.screen
 
 import com.workorder.app.data.model.allowsPartialCompOff
 import androidx.compose.material.icons.outlined.EventBusy
+import androidx.compose.material.icons.outlined.MedicalServices
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import com.workorder.app.data.model.MANUAL_MULTIPLIER_RANGE
@@ -61,7 +62,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -74,7 +74,6 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Event
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
-import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -143,7 +142,6 @@ import com.workorder.app.ui.component.QuickChip
 import com.workorder.app.ui.component.SectionCard
 import com.workorder.app.ui.viewmodel.BatchAddedEvent
 import com.workorder.app.ui.viewmodel.QuickAction
-import com.workorder.app.ui.viewmodel.SetupState
 import com.workorder.app.ui.viewmodel.WorkDayUiState
 import com.workorder.app.ui.viewmodel.WorkDayViewModel
 import com.workorder.app.util.formatDayTitle
@@ -165,15 +163,20 @@ fun WorkDayScreen(
     onNavigateBack: (() -> Unit)? = null,
     onNavigateToDate: ((LocalDate) -> Unit)? = null,
     onOpenCatalog: (() -> Unit)? = null,
-    onOpenSettings: (() -> Unit)? = null
+    onOpenBackup: (() -> Unit)? = null,
+    openAddRequested: Boolean = false,
+    onAddRequestConsumed: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val operations by viewModel.operations.collectAsStateWithLifecycle()
+    val operations = uiState.operations
     val batchAdded by viewModel.batchAdded.collectAsStateWithLifecycle()
     val entryRemoved by viewModel.entryRemoved.collectAsStateWithLifecycle()
 
     var selectedTab by rememberSaveable { mutableStateOf(DayTab.SUMMARY) }
     var showPicker by rememberSaveable { mutableStateOf(false) }
+    var showCreate by rememberSaveable { mutableStateOf(false) }
+    val createdOperationId by viewModel.createdOperationId.collectAsStateWithLifecycle()
+    val creatingOperation by viewModel.creatingOperation.collectAsStateWithLifecycle()
     var quantityForId by rememberSaveable { mutableStateOf<Long?>(null) }
     var lastBatch by remember { mutableStateOf<BatchAddedEvent?>(null) }
     var showHoursDialog by rememberSaveable { mutableStateOf(false) }
@@ -185,6 +188,36 @@ fun WorkDayScreen(
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+
+    val sickLeave = uiState.dayType == WorkDayType.SICK_LEAVE
+    fun addOperation() {
+        if (operations.isEmpty()) showCreate = true else showPicker = true
+    }
+    LaunchedEffect(createdOperationId, operations, sickLeave) {
+        val id = createdOperationId ?: return@LaunchedEffect
+        if (operations.any { it.id == id }) {
+            showCreate = false
+            if (!sickLeave) quantityForId = id
+            viewModel.consumeCreatedOperation()
+        }
+    }
+
+    LaunchedEffect(openAddRequested, uiState.isLoading, sickLeave) {
+        if (openAddRequested && !uiState.isLoading) {
+            quantityForId = null
+            showCreate = false
+            showHoursDialog = false
+            showManualDialog = false
+            showDayTypeSheet = false
+            showCommentDialog = false
+            showSpecializationDialog = false
+            showDeleteDialog = false
+            showDatePicker = false
+            showMenu = false
+            showPicker = !sickLeave
+            onAddRequestConsumed()
+        }
+    }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -270,13 +303,22 @@ fun WorkDayScreen(
                             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Следующий день")
                         }
                     }
-                    if (uiState.dayExists) {
+                    if (!uiState.isLoading) {
                         Box {
                             IconButton(onClick = { showMenu = true }) {
                                 Icon(Icons.Filled.MoreVert, contentDescription = "Ещё")
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                 DropdownMenuItem(
+                                    text = { Text(if (uiState.comment.isBlank()) "Добавить заметку" else "Изменить заметку") },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.Comment, null) },
+                                    onClick = { showMenu = false; showCommentDialog = true }
+                                )
+                                if (!uiState.dayExists && onOpenBackup != null) DropdownMenuItem(
+                                    text = { Text("Восстановить из копии") },
+                                    onClick = { showMenu = false; onOpenBackup() }
+                                )
+                                if (uiState.dayExists) DropdownMenuItem(
                                     text = { Text("Удалить наряд") },
                                     leadingIcon = {
                                         Icon(Icons.Outlined.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error)
@@ -290,11 +332,13 @@ fun WorkDayScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { showPicker = true },
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("Добавить") }
-            )
+            if (!uiState.isLoading && !sickLeave && uiState.entries.isNotEmpty()) {
+                ExtendedFloatingActionButton(
+                    onClick = ::addOperation,
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text("Добавить операцию") }
+                )
+            }
         }
     ) { padding ->
         if (uiState.isLoading) {
@@ -319,17 +363,6 @@ fun WorkDayScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            uiState.setup?.let { setup ->
-                item(key = "setup") {
-                    SetupCard(
-                        setup = setup,
-                        onOpenSettings = onOpenSettings,
-                        onOpenCatalog = onOpenCatalog,
-                        onHide = viewModel::hideSetup
-                    )
-                }
-            }
-
             item(key = "hero") {
                 DayHeroCard(
                     state = uiState,
@@ -340,6 +373,18 @@ fun WorkDayScreen(
                     onCommentClick = { showCommentDialog = true },
                     onSpecializationClick = { showSpecializationDialog = true }
                 )
+            }
+
+            if (sickLeave) {
+                if (uiState.entries.isNotEmpty()) {
+                    item(key = "sick-leave") {
+                        Text(
+                            "Операции сохранены. Они снова будут учитываться после смены типа дня.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+                return@LazyColumn
             }
 
             if (uiState.quickAddEnabled && uiState.recent.isNotEmpty()) {
@@ -354,6 +399,25 @@ fun WorkDayScreen(
                         }
                     )
                 }
+            }
+
+            if (uiState.entries.isEmpty() && uiState.totals.isEmpty()) {
+                item(key = "first-operation") {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Операции", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Если считаете выработку, укажите, сколько штук сделали.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(onClick = ::addOperation) {
+                            Icon(Icons.Default.Add, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Добавить операцию")
+                        }
+                    }
+                }
+                return@LazyColumn
             }
 
             item(key = "tabs") {
@@ -416,7 +480,7 @@ fun WorkDayScreen(
         }
     }
 
-    if (showPicker) {
+    if (showPicker && !sickLeave) {
         OperationPickerSheet(
             operations = operations,
             onPick = { operation ->
@@ -424,11 +488,24 @@ fun WorkDayScreen(
                 quantityForId = operation.id
             },
             onDismiss = { showPicker = false },
+            onCreate = { showPicker = false; showCreate = true },
             onOpenCatalog = onOpenCatalog?.let { open -> { showPicker = false; open() } }
         )
     }
 
-    quantityForId?.let { id ->
+    if (showCreate && !sickLeave) {
+        OperationEditorSheet(
+            operation = Operation(name = "", durationHours = 0.0),
+            onSave = viewModel::createOperation,
+            onArchive = null,
+            onDelete = null,
+            onDismiss = { showCreate = false },
+            saving = creatingOperation || createdOperationId != null,
+            saveLabel = "Сохранить и указать количество"
+        )
+    }
+
+    quantityForId?.takeUnless { sickLeave || uiState.isLoading }?.let { id ->
         // Архивная операция уже не в каталоге выбора, но её количество за день ещё можно поправить.
         val operation = operations.find { it.id == id }
             ?: uiState.totals.find { it.operationId == id }?.let { Operation(it.operationId, it.name, it.durationHours, it.grade) }
@@ -440,6 +517,7 @@ fun WorkDayScreen(
                 currentCount = uiState.totals.find { it.operationId == id }?.totalCount ?: 0,
                 quickAmounts = uiState.quickAmounts,
                 lastAdded = lastBatch,
+                newShiftHours = uiState.defaultDayHours.takeUnless { uiState.isRecorded },
                 onAdd = { amount -> viewModel.addBatch(operation.id, amount) },
                 onUndo = { event -> viewModel.undoBatch(event.entryId); lastBatch = null },
                 onDismiss = { quantityForId = null; lastBatch = null }
@@ -447,7 +525,7 @@ fun WorkDayScreen(
         }
     }
 
-    if (showHoursDialog) {
+    if (showHoursDialog && !sickLeave) {
         HoursDialog(
             initialHours = if (uiState.isRecorded) uiState.dayHours else uiState.defaultDayHours,
             defaultHours = uiState.defaultDayHours,
@@ -482,16 +560,18 @@ fun WorkDayScreen(
         val offDay = uiState.dayType == WorkDayType.HOLIDAY ||
             (uiState.dayType == WorkDayType.AUTO && uiState.scheduledOff)
         // Подсказка для нового ручного дня: как посчитал бы обычный режим без учёта нормы месяца.
+        val hasManualHours = uiState.dayType == WorkDayType.MANUAL ||
+            (sickLeave && (uiState.manualSingleHours > 0 || uiState.manualDoubleHours > 0))
         val initialSingle = when {
-            uiState.dayType == WorkDayType.MANUAL -> uiState.manualSingleHours
+            hasManualHours -> uiState.manualSingleHours
             offDay -> 0.0
             else -> minOf(hours, uiState.defaultDayHours)
         }
-        val initialDouble = if (uiState.dayType == WorkDayType.MANUAL) uiState.manualDoubleHours else hours - initialSingle
+        val initialDouble = if (hasManualHours) uiState.manualDoubleHours else hours - initialSingle
         ManualHoursDialog(
             initialSingle = initialSingle,
             initialDouble = initialDouble,
-            initialMultiplier = if (uiState.dayType == WorkDayType.MANUAL) uiState.manualMultiplier else DEFAULT_MANUAL_MULTIPLIER,
+            initialMultiplier = if (hasManualHours) uiState.manualMultiplier else DEFAULT_MANUAL_MULTIPLIER,
             onConfirm = { single, double, multiplier ->
                 viewModel.setManualHours(single, double, multiplier)
                 showManualDialog = false
@@ -564,54 +644,6 @@ private fun View.confirmHaptic() {
     )
 }
 
-@Composable
-private fun SetupCard(
-    setup: SetupState,
-    onOpenSettings: (() -> Unit)?,
-    onOpenCatalog: (() -> Unit)?,
-    onHide: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
-    ) {
-        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Первая настройка", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = onHide) { Text("Скрыть") }
-            }
-            SetupStep("Ставка, часы смены и график", setup.rateDone, onOpenSettings)
-            SetupStep("Операции с нормами времени", setup.operationsDone, onOpenCatalog)
-            Text(
-                "Уже вели учёт на другом телефоне? Импортируйте резервную копию в настройках.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp, end = 8.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun SetupStep(title: String, done: Boolean, onClick: (() -> Unit)?) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .clickable(enabled = onClick != null && !done) { onClick?.invoke() }
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            if (done) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
-            contentDescription = if (done) "Готово" else "Не сделано",
-            modifier = Modifier.size(22.dp)
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        if (!done && onClick != null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
-    }
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DayHeroCard(
@@ -622,6 +654,7 @@ private fun DayHeroCard(
     onSpecializationClick: () -> Unit
 ) {
     val onContainer = MaterialTheme.colorScheme.onPrimaryContainer
+    val sickLeave = state.dayType == WorkDayType.SICK_LEAVE
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
@@ -634,27 +667,48 @@ private fun DayHeroCard(
             Modifier.padding(start = 12.dp, end = 16.dp, top = 14.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Три цифры дня в одну строку вместо карточки на пол-экрана.
-            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-                HeroMetric(
-                    value = if (state.isRecorded) state.dayHours.formatNumber() else "—",
-                    label = hoursLabel(state),
-                    editable = true,
-                    // Отступ внутри области касания: скруглённый угол больше не срезает текст.
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(MaterialTheme.shapes.extraSmall)
+            if (sickLeave) {
+                Text("День на больничном", style = MaterialTheme.typography.headlineSmall)
+            } else if (!state.isRecorded) {
+                Text(if (state.specialization.isNotBlank()) "Смена запланирована" else "Часы смены",
+                    style = MaterialTheme.typography.headlineSmall)
+                Button(onClick = onHoursClick) { Text("Записать часы") }
+            } else if (state.entries.isEmpty() && state.totals.isEmpty()) {
+                Column(
+                    Modifier.clip(MaterialTheme.shapes.small)
                         .clickable(onClickLabel = "Изменить часы", onClick = onHoursClick)
                         .padding(4.dp)
-                )
-                MetricDivider(onContainer)
-                HeroMetric(state.producedHours.formatNumber(), "нормо-ч", modifier = Modifier.weight(1f).padding(start = 12.dp, top = 4.dp))
-                MetricDivider(onContainer)
-                HeroMetric(
-                    value = if (state.isRecorded && state.dayHours > 0) "${(state.producedHours / state.dayHours * 100).roundToInt()}%" else "—",
-                    label = "выработка",
-                    modifier = Modifier.weight(1f).padding(start = 12.dp, top = 4.dp)
-                )
+                ) {
+                    Text("Часы смены", style = MaterialTheme.typography.labelLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${state.dayHours.formatNumber()} ч", style = MaterialTheme.typography.headlineMedium)
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(18.dp))
+                    }
+                    if (state.compOffHours > 0) Text("Отгул · ${state.compOffHours.formatNumber()} ч")
+                }
+            } else {
+                val hours = state.dayHours.formatNumber()
+                val efficiency = if (state.dayHours > 0) "${(state.producedHours / state.dayHours * 100).roundToInt()}%" else "—"
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val compact = maxWidth / LocalDensity.current.fontScale < 290.dp
+                    val editHours = Modifier.clip(MaterialTheme.shapes.small)
+                        .clickable(onClickLabel = "Изменить часы", onClick = onHoursClick)
+                        .padding(4.dp)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (compact) HeroMetric(hours, hoursLabel(state), editHours, editable = true)
+                        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                            if (!compact) {
+                                HeroMetric(hours, hoursLabel(state), Modifier.weight(1f).then(editHours), editable = true)
+                                MetricDivider(onContainer)
+                            }
+                            HeroMetric(state.producedHours.formatNumber(), "нормо-часы",
+                                modifier = Modifier.weight(1f).padding(start = if (compact) 4.dp else 12.dp, top = 4.dp))
+                            MetricDivider(onContainer)
+                            HeroMetric(efficiency, "выработка", modifier = Modifier.weight(1f).padding(start = 12.dp, top = 4.dp))
+                        }
+                    }
+                }
             }
             FlowRow(Modifier.padding(start = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroChip(
@@ -664,10 +718,10 @@ private fun DayHeroCard(
                     description = "Тип дня: ${dayTypeLabel(state)}",
                     onClick = onDayTypeClick
                 )
-                HeroChip(
+                if (state.comment.isNotBlank()) HeroChip(
                     icon = Icons.AutoMirrored.Outlined.Comment,
-                    label = state.comment.ifBlank { "Заметка" },
-                    description = if (state.comment.isBlank()) "Добавить заметку" else "Заметка: ${state.comment}",
+                    label = state.comment,
+                    description = "Заметка: ${state.comment}",
                     onClick = onCommentClick
                 )
                 if (state.specializationEnabled) HeroChip(
@@ -678,7 +732,7 @@ private fun DayHeroCard(
                 )
             }
             // Пустой контейнер добавлял отступ колонки — баланс сам решает, показываться ли.
-            CompTimeBalance(state, Modifier.padding(start = 4.dp))
+            if (!sickLeave) CompTimeBalance(state, Modifier.padding(start = 4.dp))
         }
     }
 }
@@ -693,7 +747,6 @@ private fun HeroMetric(value: String, label: String, modifier: Modifier = Modifi
                 Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
             }
         }
-        // До двух строк с переносом по пробелу: в трети ширины «указать часы» обрезалось.
         Text(label, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -714,8 +767,8 @@ private fun HeroChip(
     val onContainer = MaterialTheme.colorScheme.onPrimaryContainer
     AssistChip(
         onClick = onClick,
-        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+        label = { Text(label, maxLines = if (trailingDropDown) 2 else 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = if (trailingDropDown) null else {{ Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) }},
         trailingIcon = if (trailingDropDown) {{ Icon(Icons.Filled.ArrowDropDown, contentDescription = null) }} else null,
         colors = AssistChipDefaults.assistChipColors(
             labelColor = onContainer,
@@ -727,8 +780,6 @@ private fun HeroChip(
 }
 
 private fun hoursLabel(state: WorkDayUiState): String = when {
-    !state.isRecorded && state.dayType == WorkDayType.UNPAID -> "день БС"
-    !state.isRecorded -> "указать часы"
     state.compOffHours > 0 -> "часов + отгул ${state.compOffHours.formatNumber()} ч"
     state.dayType == WorkDayType.MANUAL -> "ручной режим"
     state.dayType == WorkDayType.COMP_WORK -> "в баланс"
@@ -744,12 +795,13 @@ private fun dayTypeLabel(state: WorkDayUiState): String = when (state.dayType) {
     WorkDayType.COMP_OFF -> "Отгул"
     WorkDayType.MANUAL -> "Ручной режим"
     WorkDayType.UNPAID -> "БС · без содержания"
+    WorkDayType.SICK_LEAVE -> "Больничный"
 }
 
 private data class DayTypeOption(val type: WorkDayType, val title: String, val description: String, val icon: ImageVector)
 
 /**
- * Шторка вместо длинного выпадающего меню: шесть плиток в две строки.
+ * Типы дня сгруппированы по назначению.
  * Отгулы и ручной режим — отдельной группой, баланс отгулов — на плитке «Отгул».
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -764,6 +816,7 @@ private fun DayTypeSheet(state: WorkDayUiState, onPick: (WorkDayType) -> Unit, o
         DayTypeOption(WorkDayType.COMP_WORK, "Выход за отгул", "часы — в баланс", Icons.Outlined.MoreTime),
         DayTypeOption(WorkDayType.COMP_OFF, "Отгул", "есть ${state.compTimeBalance.formatNumber()} ч", Icons.Outlined.WbSunny),
         DayTypeOption(WorkDayType.UNPAID, "БС", "без содержания, не в норме", Icons.Outlined.EventBusy),
+        DayTypeOption(WorkDayType.SICK_LEAVE, "Больничный", "вне нормы часов", Icons.Outlined.MedicalServices),
         DayTypeOption(WorkDayType.MANUAL, "Ручной", "свои часы и коэффициент", Icons.Outlined.Edit)
     )
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -914,10 +967,15 @@ private fun QuickAddRow(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun OperationsHeader(selected: DayTab, units: Int, journalCount: Int, onSelect: (DayTab) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.Bottom) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(Modifier.align(Alignment.CenterVertically), verticalAlignment = Alignment.Bottom) {
             Text("Операции", style = MaterialTheme.typography.titleMedium, maxLines = 1)
             if (units > 0) Text(
                 " · $units шт",
@@ -1089,6 +1147,7 @@ internal fun HoursDialog(
 ) {
     var text by rememberSaveable { mutableStateOf(initialHours.toInput()) }
     var compText by rememberSaveable { mutableStateOf(initialCompOff.toInput()) }
+    var showCompOff by rememberSaveable { mutableStateOf(initialCompOff > 0) }
     val parsed = text.replace(',', '.').filterNot(Char::isWhitespace).toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..24.0 }
     val comp = if (compOffAllowed) compText.replace(',', '.').filterNot(Char::isWhitespace).toDoubleOrNull()
         ?.takeIf { it.isFinite() && it in 0.0..24.0 } else 0.0
@@ -1102,7 +1161,7 @@ internal fun HoursDialog(
         title = { Text("Часы на смене") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (compOffAllowed) Text("Отработано", style = MaterialTheme.typography.labelLarge)
+                if (showCompOff) Text("Отработано", style = MaterialTheme.typography.labelLarge)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FilledTonalIconButton(onClick = { step(-0.5) }) {
                         Icon(Icons.Filled.Remove, contentDescription = "Минус полчаса")
@@ -1130,7 +1189,10 @@ internal fun HoursDialog(
                         )
                     }
                 }
-                if (compOffAllowed) {
+                if (compOffAllowed && !showCompOff) {
+                    TextButton(onClick = { showCompOff = true }) { Text("Добавить часы отгула") }
+                }
+                if (compOffAllowed && showCompOff) {
                     // Отгул на часть дня: например, отработано 4 ч и ещё 4 ч — из баланса отгулов.
                     ManualNumberField("Отгул к этому дню", compText, comp != null, 0.5, 0.0..24.0, "ч") { compText = it }
                     val rest = (defaultHours - (parsed ?: 0.0)).coerceAtLeast(0.0)
@@ -1140,9 +1202,10 @@ internal fun HoursDialog(
                         label = { Text("До смены: ${rest.formatNumber()} ч") }
                     )
                 }
-                Text(
+                if (showCompOff || parsed == 0.0 || !valid) Text(
                     when {
-                        !valid && parsed != null && comp != null -> "Всего ${(parsed + comp).formatNumber()} ч — в сутках не больше 24"
+                        parsed == null || comp == null -> "Введите часы от 0 до 24"
+                        !valid -> "Всего ${(parsed + comp).formatNumber()} ч — в сутках не больше 24"
                         compOffAllowed -> ("Отгул оплачивается как обычные часы и списывается из баланса " +
                             "(сейчас ${compTimeBalance.formatNumber()} ч). 0 ч отработано — смена без присутствия.")
                         else -> "0 ч — смена отмечена без часов присутствия"

@@ -25,8 +25,8 @@ android {
         applicationId = "ru.workorder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 16
-        versionName = "4.2"
+        versionCode = 22
+        versionName = "4.3"
         buildConfigField("boolean", "ENABLE_WEAR_SYNC", "true")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -61,10 +61,12 @@ android {
         // Ключ нужно беречь — обновление с другим ключом поверх не встанет.
         release {
             signingConfig = signingConfigs.findByName("release")
-            isMinifyEnabled = false
+            // Только чтобы убрать ложный «рекламный SDK» — правила в proguard-rules.pro.
+            isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
+                "proguard-missing.pro"
             )
         }
     }

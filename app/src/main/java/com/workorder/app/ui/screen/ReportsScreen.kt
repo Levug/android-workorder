@@ -204,14 +204,14 @@ private fun SummaryReportTab(
     ) {
         item { SalaryHeroCard(uiState, onOpenSettings) }
         item { NormCard(uiState, onEditNorm) }
-        item { MonthStatsCard(uiState) }
+        if (uiState.hasRecordedDays || uiState.totals.isNotEmpty()) item { MonthStatsCard(uiState) }
         if (uiState.salaryReady) {
             item { BreakdownCard(uiState, expanded = breakdownOpen, onToggle = { breakdownOpen = !breakdownOpen }) }
         }
-        item {
+        if (uiState.totals.isNotEmpty()) item {
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Операции за месяц", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                if (uiState.totals.isNotEmpty()) Text(
+                Text(
                     "нормо-часы",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -219,7 +219,10 @@ private fun SummaryReportTab(
             }
         }
         if (uiState.totals.isEmpty()) {
-            item { EmptyState(Icons.Outlined.Insights, "Нет операций", "В этом месяце операции ещё не вносились") }
+            if (!uiState.hasRecordedDays) item {
+                Text("За этот месяц пока нет смен. Запишите часы на вкладке «Сегодня» или выберите дату в календаре.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         } else {
             item {
                 SectionCard {
@@ -264,9 +267,9 @@ private fun SalaryHeroCard(uiState: ReportUiState, onOpenSettings: () -> Unit) {
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (uiState.rateMissing) {
-                Text("Укажите ставку", style = MaterialTheme.typography.titleLarge)
-                Text("Без часовой ставки зарплата не считается.")
-                Button(onClick = onOpenSettings) { Text("Открыть настройки") }
+                Text("Зарплата за месяц", style = MaterialTheme.typography.titleLarge)
+                Text("Укажите ставку за час, чтобы увидеть сумму за отработанные смены.")
+                Button(onClick = onOpenSettings) { Text("Указать ставку") }
             } else {
                 val salary = uiState.salary
                 val forecast = uiState.forecastSalary.takeIf { uiState.salaryReady }
@@ -345,6 +348,16 @@ private fun MonthStatsCard(uiState: ReportUiState) {
                     }
                 }
             }
+        }
+        if (uiState.salary.sickLeaveDays > 0) {
+            val estimate = uiState.salary.sickLeaveEstimate
+            val days = uiState.salary.sickLeaveDays
+            Text(
+                if (estimate != null) "Больничный за $days дн. · ≈ ${estimate.formatNumber()} ₽ на руки".noOrphans()
+                else "Больничный · $days дн. Для оценки укажите сумму за день в разделе «Оплата и смена».".noOrphans(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         uiState.bank?.let {
             if (it.rawHours != it.adjustedHours) Text(
@@ -442,11 +455,11 @@ private fun BreakdownCard(uiState: ReportUiState, expanded: Boolean, onToggle: (
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             if (salary.unpaidDays > 0) Text(
-            "Дни БС: ${salary.unpaidDays} — без оплаты, норма месяца меньше на эти дни".noOrphans(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        if (salary.compWorkHours > 0) Text(
+                "Дни БС: ${salary.unpaidDays} — без оплаты, норма месяца меньше на эти дни".noOrphans(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (salary.compWorkHours > 0) Text(
                 "Выходы за отгул: ${salary.compWorkHours.formatNumber()} ч — не оплачиваются, ушли в баланс отгулов".noOrphans(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

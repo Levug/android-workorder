@@ -19,6 +19,7 @@ data class SettingsForm(val stored: Settings, val edits: Map<String, String>) {
         SCHEDULE -> stored.workSchedule.name
         QUICK -> stored.quickAmounts.replace(",", ", ")
         COMP -> stored.compTimeInitialHours.plain()
+        SICK_LEAVE -> stored.sickLeaveDailyAmount.plain()
         else -> kotlin.error("Unknown settings field")
     }
     val schedule get() = WorkSchedule.valueOf(text(SCHEDULE))
@@ -29,12 +30,13 @@ data class SettingsForm(val stored: Settings, val edits: Map<String, String>) {
         ANCHOR -> if (schedule != WorkSchedule.TWO_TWO || anchorDate != null) null else "Выберите дату"
         QUICK -> if (parseQuickAmounts(text(QUICK)) != null) null else "От 1 до 6 разных чисел, например 1, 5, 10, 17"
         COMP -> if (number(field)?.let { it.isFinite() && it >= 0 } == true) null else "Введите часы от 0"
+        SICK_LEAVE -> if (number(field)?.let { it.isFinite() && it >= 0 } == true) null else "Введите сумму от 0"
         else -> null
     }
     val anchorDate: LocalDate? get() = runCatching {
         LocalDate.parse(text(ANCHOR)).takeIf { it.toString() == text(ANCHOR) }
     }.getOrNull()
-    val valid get() = listOf(RATE, CONTRACT, HOURS, ANCHOR, QUICK, COMP).all { error(it) == null }
+    val valid get() = listOf(RATE, CONTRACT, HOURS, ANCHOR, QUICK, COMP, SICK_LEAVE).all { error(it) == null }
     val dirty get() = edits.isNotEmpty()
 
     /** Черновик как настройки — для предпросмотра графика до сохранения. */
@@ -52,7 +54,8 @@ data class SettingsForm(val stored: Settings, val edits: Map<String, String>) {
             workSchedule = if (SCHEDULE in edits) schedule else current.workSchedule,
             shiftAnchorDate = if (ANCHOR in edits && schedule == WorkSchedule.TWO_TWO) text(ANCHOR) else current.shiftAnchorDate,
             quickAmounts = if (QUICK in edits) parseQuickAmounts(text(QUICK))!!.joinToString(",") else current.quickAmounts,
-            compTimeInitialHours = if (COMP in edits) number(COMP)!! else current.compTimeInitialHours
+            compTimeInitialHours = if (COMP in edits) number(COMP)!! else current.compTimeInitialHours,
+            sickLeaveDailyAmount = if (SICK_LEAVE in edits) number(SICK_LEAVE)!! else current.sickLeaveDailyAmount
         )
     }
 
@@ -64,5 +67,6 @@ data class SettingsForm(val stored: Settings, val edits: Map<String, String>) {
         const val SCHEDULE = "schedule"
         const val QUICK = "quick"
         const val COMP = "compTime"
+        const val SICK_LEAVE = "sickLeaveDailyAmount"
     }
 }

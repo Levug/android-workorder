@@ -31,6 +31,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
@@ -72,7 +73,12 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel, onNavigateToOperations: () -> Unit) {
+fun SettingsScreen(
+    viewModel: SettingsViewModel,
+    onNavigateToOperations: () -> Unit,
+    requestedSection: SettingsSection? = null,
+    onSectionOpened: () -> Unit = {}
+) {
     val form by viewModel.form.collectAsStateWithLifecycle()
     val saving by viewModel.savingForm.collectAsStateWithLifecycle()
     val transferBusy by viewModel.busy.collectAsStateWithLifecycle()
@@ -95,6 +101,12 @@ fun SettingsScreen(viewModel: SettingsViewModel, onNavigateToOperations: () -> U
     }
     val settings = draft.stored
     var section by rememberSaveable { mutableStateOf<SettingsSection?>(null) }
+    LaunchedEffect(requestedSection) {
+        if (requestedSection != null) {
+            section = requestedSection
+            onSectionOpened()
+        }
+    }
     BackHandler(enabled = section != null) { section = null }
     val wear = viewModel.wearState?.collectAsStateWithLifecycle()
     val operationCounts by viewModel.operationCounts.collectAsStateWithLifecycle()
@@ -181,7 +193,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onNavigateToOperations: () -> U
     }
 }
 
-private enum class SettingsSection(val title: String) {
+enum class SettingsSection(val title: String) {
     PAY("Оплата и смена"),
     WATCH("Часы Wear OS"),
     APPEARANCE("Оформление"),
@@ -219,19 +231,12 @@ private fun SettingsOverview(
                 )
             }
         ) { onOpen(SettingsSection.APPEARANCE) }
-        val switches = experimentSwitches(settings)
         SettingsRow(
-            Icons.Outlined.Science, "Эксперименты",
-            "Банк, свайп дней, цвета календаря, быстрые кнопки, партии " +
-                settings.quickAmountList.joinToString(" ") { "+$it" },
-            trailing = {
-                Text("${switches.count { it }} из ${switches.size}", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            }
+            Icons.Outlined.Science, "Эксперименты", "Банк операций, быстрый ввод и календарь"
         ) { onOpen(SettingsSection.EXPERIMENTS) }
     }
     SettingsGroup("Данные") {
-        SettingsRow(Icons.Outlined.Storage, "Резервная копия", "Экспорт и импорт базы, перенос настроек") {
+        SettingsRow(Icons.Outlined.Storage, "Резервная копия", "Сохранить данные или восстановить из файла") {
             onOpen(SettingsSection.DATA)
         }
     }
@@ -339,12 +344,6 @@ private const val PRIVACY_URL = "https://github.com/Levug/android-workorder/blob
 /** Добровольная поддержка: ничего не открывает и не продаёт — иначе это была бы оплата в обход RuStore. */
 private const val DONATE_URL = "https://pay.cloudtips.ru/p/21a61187"
 
-/** Переключатели раздела «Эксперименты» — для счётчика «N из M» в списке разделов. */
-private fun experimentSwitches(settings: Settings) = listOf(
-    settings.daySpecializationEnabled, settings.advanceFillEnabled, settings.bankEnabled,
-    settings.daySwipeEnabled, settings.calendarHeatEnabled, settings.quickAddEnabled, settings.summaryQuickAddEnabled
-)
-
 /** Эксперименты: функции, которые можно выключить, и настройки добавления партий. */
 @Composable
 private fun ExperimentsSection(
@@ -405,7 +404,8 @@ private fun ExperimentsSection(
 }
 
 private fun paySummary(settings: Settings): String =
-    "${settings.hourlyRate.formatNumber()} ₽/ч · смена ${settings.defaultDayHours.formatNumber()} ч · " +
+    (if (settings.hourlyRate > 0) "${settings.hourlyRate.formatNumber()} ₽/ч · " else "") +
+        "Смена ${settings.defaultDayHours.formatNumber()} ч · " +
         if (settings.workSchedule == WorkSchedule.FIVE_TWO) "5/2" else "2/2"
 
 private fun catalogSummary(counts: Pair<Int, Int>?): String {
@@ -456,6 +456,7 @@ private fun appearanceSummary(settings: Settings): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PaySection(draft: SettingsForm, compTimeBalance: Double?, enabled: Boolean, onEdit: (String, String) -> Unit) {
+    var showSickLeaveHelp by rememberSaveable { mutableStateOf(false) }
     SectionCard {
         SubTitle("Ставки")
         PairRow(
@@ -477,12 +478,42 @@ private fun PaySection(draft: SettingsForm, compTimeBalance: Double?, enabled: B
         SchedulePreview(draft.preview)
     }
     SectionCard {
+        SubTitle("Больничный")
+        PreferenceField(
+            draft, SettingsForm.SICK_LEAVE, "На руки, ₽ за день", onEdit, enabled,
+            hint = "За календарный день. 0 — без оценки выплаты."
+        )
+        TextButton(onClick = { showSickLeaveHelp = true }) { Text("Как прикинуть сумму") }
+    }
+    SectionCard {
         SubTitle("Отгулы")
         PreferenceField(
             draft, SettingsForm.COMP, "Баланс до начала учёта, ч", onEdit, enabled,
             compTimeBalance?.let { "Сейчас в балансе ${it.formatNumber()} ч" } ?: ""
         )
     }
+    if (showSickLeaveHelp) SickLeaveEstimateHelp { showSickLeaveHelp = false }
+}
+
+@Composable
+private fun SickLeaveEstimateHelp(onDismiss: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Сколько указать за день") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Если недавно уже получали больничный, сложите выплаты на руки от работодателя и СФР. Разделите сумму на число оплаченных календарных дней. Например, 7 200 ₽ за 6 дней — это 1 200 ₽ в день.")
+                Text("Для приблизительной оценки при своей болезни сложите заработок до НДФЛ, с которого начислялись взносы, за два календарных года перед годом больничного. Разделите на 730.")
+                Text("Умножьте результат на 60% при страховом стаже от 6 месяцев до 5 лет, на 80% при стаже от 5 до 8 лет или на 100% при стаже от 8 лет.")
+                Text("Вычтите НДФЛ. При ставке 13% умножьте результат на 0,87. Фактическая выплата может отличаться из-за МРОТ, лимитов и особых правил.")
+                TextButton(onClick = {
+                    runCatching { uriHandler.openUri("https://sfr.gov.ru/grazhdanam/socialnoe_strahovanie/posobie_po_vremennoi_netrudosposobnosti/") }
+                }) { Text("Правила СФР") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Понятно") } }
+    )
 }
 
 /** Два поля рядом, пока подписи помещаются; при крупном шрифте на узком экране — друг под другом. */

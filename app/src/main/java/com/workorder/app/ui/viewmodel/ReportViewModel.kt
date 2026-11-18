@@ -38,6 +38,7 @@ import java.util.Locale
 
 data class ReportUiState(
     val month: YearMonth,
+    val hasRecordedDays: Boolean = false,
     val workedDays: Int = 0,
     val workedHours: Double = 0.0,
     val rawProducedHours: Double = 0.0,
@@ -111,6 +112,7 @@ class ReportViewModel(
             val norm = bank.plan.plannedHours.takeIf { it > 0.0 } ?: scheduleNorm
             ReportUiState(
                 month = m,
+                hasRecordedDays = days.isNotEmpty(),
                 workedDays = days.count { it.isInHourFund },
                 workedHours = workedHours,
                 rawProducedHours = bank.rawHours,
@@ -204,6 +206,8 @@ class ReportViewModel(
             totalHours = state.workedHours,
             totalProjectHours = state.producedHours,
             salary = state.salary.fullSalary,
+            sickLeaveDays = state.salary.sickLeaveDays,
+            sickLeaveEstimate = state.salary.sickLeaveEstimate,
             totals = state.totals
         )
     }
@@ -214,6 +218,8 @@ class ReportViewModel(
             totalHours = state.workedHours,
             totalProjectHours = state.producedHours,
             salary = state.salary.fullSalary,
+            sickLeaveDays = state.salary.sickLeaveDays,
+            sickLeaveEstimate = state.salary.sickLeaveEstimate,
             totals = state.totals
         )
     }
