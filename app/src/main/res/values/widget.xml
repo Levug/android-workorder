@@ -1,0 +1,39 @@
+<resources>
+    <string name="widget_calendar_name">Наряд · Календарь</string>
+    <string name="widget_calendar_description">Текущий месяц, часы и типы дней. Нажмите на день, чтобы открыть наряд.</string>
+    <string name="widget_calendar_hint">Часы под датой · нажмите на день</string>
+    <string name="widget_today">Сегодня</string>
+    <string name="widget_name">Наряд · Сегодня</string>
+    <string name="widget_compact_name">Наряд · Компактный</string>
+    <string name="widget_description">Часы, нормо-часы и выработка за сегодня. Кнопка добавления операции.</string>
+    <string name="widget_compact_description">Часы и нормо-часы за сегодня с кнопкой добавления операции.</string>
+    <string name="widget_hours">часы</string>
+    <string name="widget_produced">нормо-ч</string>
+    <string name="widget_efficiency">выработка</string>
+    <string name="widget_open_hint">Открыть сегодняшний наряд</string>
+    <string name="widget_add">+ Добавить</string>
+    <string name="widget_add_description">Добавить операцию в сегодняшний наряд</string>
+    <style name="WidgetMetric">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">32dp</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:textColor">#191C20</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:autoSizeTextType">uniform</item>
+        <item name="android:autoSizeMinTextSize">12sp</item>
+        <item name="android:autoSizeMaxTextSize">24sp</item>
+    </style>
+    <style name="WidgetCaption">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">18dp</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">#414754</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:autoSizeTextType">uniform</item>
+        <item name="android:autoSizeMinTextSize">9sp</item>
+        <item name="android:autoSizeMaxTextSize">11sp</item>
+    </style>
+</resources>

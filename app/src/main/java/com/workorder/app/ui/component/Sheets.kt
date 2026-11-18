@@ -1,6 +1,9 @@
 package com.workorder.app.ui.component
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -66,6 +69,7 @@ fun QuantitySheet(
     currentCount: Int,
     quickAmounts: List<Int>,
     lastAdded: BatchAddedEvent?,
+    newShiftHours: Double? = null,
     onAdd: (Int) -> Unit,
     onUndo: (BatchAddedEvent) -> Unit,
     onDismiss: () -> Unit
@@ -86,22 +90,29 @@ fun QuantitySheet(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(bottom = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Column {
-                Text(
-                    text = operation.name,
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Text(
-                    text = "${operation.grade} разряд · ${operation.durationHours.formatNumber()} нч за штуку",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(operation.name, style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "${operation.grade} разряд · ${operation.durationHours.formatNumber()} нч за штуку",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = onDismiss) { Text("Закрыть") }
             }
 
-            Row(verticalAlignment = Alignment.Bottom) {
+            if (newShiftHours != null) {
+                Text(
+                    "С первой партией запишется смена на ${newShiftHours.formatNumber()} ч. Часы можно изменить в наряде.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            } else Row(verticalAlignment = Alignment.Bottom) {
                 AnimatedValue(
                     text = currentCount.toString(),
                     style = MaterialTheme.typography.headlineMedium,
@@ -177,7 +188,7 @@ fun QuantitySheet(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedButton(
+                if (currentCount > 0) OutlinedButton(
                     onClick = {
                         amount?.let { onAdd(-it) }
                         amountText = ""
@@ -210,6 +221,7 @@ fun OperationPickerSheet(
     operations: List<Operation>,
     onPick: (Operation) -> Unit,
     onDismiss: () -> Unit,
+    onCreate: () -> Unit,
     onOpenCatalog: (() -> Unit)? = null
 ) {
     var query by remember { mutableStateOf("") }
@@ -246,18 +258,20 @@ fun OperationPickerSheet(
 
             if (operations.isEmpty()) {
                 Text(
-                    text = "Каталог операций пуст. Добавьте операции с нормами времени — и их можно будет вносить в наряд.",
+                    text = "Сохраните название и норму времени. Затем укажите количество.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 16.dp)
                 )
+                Button(onClick = onCreate) { Text("Создать операцию") }
                 if (onOpenCatalog != null) {
-                    Button(onClick = onOpenCatalog, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onOpenCatalog, modifier = Modifier.fillMaxWidth()) {
                         Text("Открыть каталог операций")
                     }
                 }
             } else {
                 LazyColumn {
+                    item { TextButton(onClick = onCreate) { Text("Создать операцию") } }
                     items(filtered, key = { it.id }) { operation ->
                         OperationRow(operation, null) { onPick(operation) }
                     }

@@ -172,7 +172,13 @@ fun CalendarScreen(
                 }
             }
 
-            SectionCard {
+            if (uiState.workedDays == 0) {
+                Text(
+                    "Выберите день, чтобы открыть наряд.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else SectionCard {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     StatCell(
                         value = uiState.workedDays.toString(),
@@ -184,9 +190,7 @@ fun CalendarScreen(
                         valueColor = MaterialTheme.colorScheme.primary
                     )
                     StatCell(
-                        value = if (uiState.workedDays > 0)
-                            (uiState.workedHours / uiState.workedDays).formatNumber()
-                        else "0",
+                        value = (uiState.workedHours / uiState.workedDays).formatNumber(),
                         label = "ч / смена"
                     )
                 }

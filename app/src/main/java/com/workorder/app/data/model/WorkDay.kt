@@ -10,9 +10,10 @@ import androidx.room.PrimaryKey
  * COMP_WORK — выход за отгул: часы не оплачиваются, а копятся в балансе отгулов;
  * COMP_OFF — отгул за счёт баланса: часы дня оплачиваются как обычные и списываются из баланса;
  * MANUAL — часы по одинарной и двойной ставке указаны вручную;
- * UNPAID — БС, день без сохранения содержания: не оплачивается и не входит в норму месяца.
+ * UNPAID — БС, день без сохранения содержания: не оплачивается и не входит в норму месяца;
+ * SICK_LEAVE — больничный: день исключён из учёта работы, пособие рассчитывается отдельно.
  */
-enum class WorkDayType { AUTO, REGULAR, HOLIDAY, COMP_WORK, COMP_OFF, MANUAL, UNPAID }
+enum class WorkDayType { AUTO, REGULAR, HOLIDAY, COMP_WORK, COMP_OFF, MANUAL, UNPAID, SICK_LEAVE }
 
 /**
  * Рабочий день (наряд). Дата хранится строкой в формате ISO (yyyy-MM-dd),
@@ -65,8 +66,8 @@ val MANUAL_MULTIPLIER_RANGE = 1.0..10.0
  * выход за отгул уходит в баланс отгулов и в фонд не входит, а отгул оплачивается и входит.
  */
 val WorkDay.fundHours: Double
-    get() = if (!isRecorded || dayType == WorkDayType.COMP_WORK) 0.0 else totalHours + compOffHours
+    get() = if (isInHourFund) totalHours + compOffHours else 0.0
 
-/** Смена, которая входит в фонд месяца (не план и не выход за отгул). */
+/** Смена, которая входит в фонд месяца. */
 val WorkDay.isInHourFund: Boolean
-    get() = isRecorded && dayType != WorkDayType.COMP_WORK
+    get() = isRecorded && dayType != WorkDayType.COMP_WORK && dayType != WorkDayType.SICK_LEAVE

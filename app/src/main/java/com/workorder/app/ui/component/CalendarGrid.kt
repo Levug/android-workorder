@@ -49,7 +49,6 @@ import com.workorder.app.ui.theme.calendarHeatPalette
 import com.workorder.app.ui.theme.customAccent
 import com.workorder.app.util.formatFull
 import com.workorder.app.util.formatNumber
-import com.workorder.app.util.noOrphans
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -132,7 +131,7 @@ fun CalendarGrid(
                                 showSpecialization = backVisible,
                                 minHeight = minCellHeight,
                                 isScheduledOff = when (days[date]?.dayType) {
-                                    WorkDayType.HOLIDAY, WorkDayType.COMP_WORK, WorkDayType.UNPAID -> true
+                                    WorkDayType.HOLIDAY, WorkDayType.COMP_WORK, WorkDayType.UNPAID, WorkDayType.SICK_LEAVE -> true
                                     WorkDayType.REGULAR, WorkDayType.COMP_OFF -> false
                                     else -> !SalaryCalculator.isScheduledWorkDay(date, settings)
                                 },
@@ -148,25 +147,26 @@ fun CalendarGrid(
         }
         Spacer(Modifier.height(8.dp))
         if (!backVisible) {
-        // Шкала часов — только когда включена цветовая индикация (эксперимент «Цвета часов в календаре»).
-        if (settings.calendarHeatEnabled) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("0 ч", style = MaterialTheme.typography.labelSmall)
-            for (step in 0..4) {
-                Box(Modifier.weight(1f).height(10.dp).clip(MaterialTheme.shapes.small)
-                    .background(attendanceHeatColor(heatMax * step / 4, heatMax, palette)))
+            val hasShifts = days.values.any { it.isRecorded }
+            if (settings.calendarHeatEnabled && hasShifts) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("0 ч", style = MaterialTheme.typography.labelSmall)
+                    for (step in 0..4) {
+                        Box(Modifier.weight(1f).height(10.dp).clip(MaterialTheme.shapes.small)
+                            .background(attendanceHeatColor(heatMax * step / 4, heatMax, palette)))
+                    }
+                    Text("${heatMax.formatNumber()} ч", style = MaterialTheme.typography.labelSmall)
+                }
             }
-            Text("${heatMax.formatNumber()} ч", style = MaterialTheme.typography.labelSmall)
-        }
-        // Пояснение отдельной строкой, образцы цветов — ниже: рядом с образцом длинный текст переносился по слову.
-        if (settings.calendarHeatEnabled) Text("Темнее — больше часов за день".noOrphans(), style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (!settings.calendarHeatEnabled) LegendSwatch(MaterialTheme.colorScheme.primaryContainer, "смена")
-            LegendSwatch(dayOff.background, "выходной")
-            LegendSwatch(MaterialTheme.colorScheme.tertiaryContainer, "выход за отгул")
-        }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!settings.calendarHeatEnabled && hasShifts) LegendSwatch(MaterialTheme.colorScheme.primaryContainer, "смена")
+                LegendSwatch(dayOff.background, "выходной")
+                if (days.values.any { it.dayType == WorkDayType.COMP_WORK }) {
+                    LegendSwatch(MaterialTheme.colorScheme.tertiaryContainer, "выход за отгул")
+                }
+            }
         } else {
-            Text("Специализации — план на день, без добавления часов. Нажми на день, чтобы изменить.",
+            Text("Выберите день, чтобы изменить специализацию.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -189,6 +189,7 @@ private fun hoursLabel(day: WorkDay, isScheduledOff: Boolean): String {
         WorkDayType.COMP_OFF -> "отгул"
         WorkDayType.MANUAL -> "$hours✎"
         WorkDayType.UNPAID -> "${hours}·БС"
+        WorkDayType.SICK_LEAVE -> "бол."
         // Отгул на часть дня: «4+4отг»; если не влезает — сумма часов.
         else -> if (day.compOffHours > 0) {
             "${day.totalHours.formatNumber()}+${day.compOffHours.formatNumber()}отг".takeIf { it.length <= 7 }
@@ -234,11 +235,13 @@ private fun DayCell(
     onClick: () -> Unit
 ) {
     val filled = workDay?.isRecorded == true
+    val sickLeave = workDay?.dayType == WorkDayType.SICK_LEAVE
     // Выход за отгул не входит в часы месяца: своя заливка вместо тепловой шкалы.
     val compWork = !showSpecialization && filled && workDay!!.dayType == WorkDayType.COMP_WORK
     val specialization = workDay?.specialization.orEmpty()
     val background = when {
         showSpecialization && specialization.isNotBlank() -> MaterialTheme.colorScheme.primaryContainer
+        !showSpecialization && sickLeave -> MaterialTheme.colorScheme.tertiaryContainer
         compWork -> MaterialTheme.colorScheme.tertiaryContainer
         !showSpecialization && filled && !heatEnabled -> MaterialTheme.colorScheme.primaryContainer
         !showSpecialization && filled -> attendanceHeatColor(workDay!!.fundHours, heatMax, palette)
@@ -247,6 +250,7 @@ private fun DayCell(
     }
     val contentColor = when {
         showSpecialization && specialization.isNotBlank() -> MaterialTheme.colorScheme.onPrimaryContainer
+        !showSpecialization && sickLeave -> MaterialTheme.colorScheme.onTertiaryContainer
         compWork -> MaterialTheme.colorScheme.onTertiaryContainer
         !showSpecialization && filled && !heatEnabled -> MaterialTheme.colorScheme.onPrimaryContainer
         !showSpecialization && filled -> if (background.luminance() > 0.179f) Color.Black else Color.White
@@ -268,9 +272,10 @@ private fun DayCell(
             .semantics(mergeDescendants = true) {
                 contentDescription = "${date.formatFull()}: " + (if (showSpecialization) {
                     specialization.ifBlank { "специализация не задана" }
-                } else if (filled) "${workDay!!.totalHours.formatNumber()} фактических часов" + dayTypeSpoken(workDay.dayType)
+                } else if (sickLeave) "больничный"
+                else if (filled) "${workDay!!.totalHours.formatNumber()} фактических часов" + dayTypeSpoken(workDay.dayType)
                 else "нет наряда") +
-                    (if (isScheduledOff) ", выходной" else "")
+                    (if (isScheduledOff && !sickLeave) ", выходной" else "")
             }
             .then(
                 if (isToday) Modifier.border(
@@ -298,6 +303,8 @@ private fun DayCell(
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, lineHeight = 11.sp),
                     color = contentColor, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            } else if (sickLeave) {
+                Text(text = "бол.", style = MaterialTheme.typography.labelSmall, color = contentColor)
             } else if (filled) {
                 Text(
                     text = hoursLabel(workDay!!, isScheduledOff),

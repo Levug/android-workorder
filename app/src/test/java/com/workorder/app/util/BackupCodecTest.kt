@@ -49,7 +49,7 @@ class BackupCodecTest {
     @Test fun rejectsWrongFormatAndFutureVersion() {
         assertRejected { it.addProperty("format", "unknown") }
         assertRejected { it.addProperty("formatVersion", 2) }
-        assertRejected { it.addProperty("databaseVersion", 17) }
+        assertRejected { it.addProperty("databaseVersion", it.get("databaseVersion").asInt + 1) }
         assertThrows(IllegalArgumentException::class.java) {
             BackupCodec.decode("""{"operations":[],"settings":null}""", full)
         }
@@ -130,6 +130,7 @@ class BackupCodecTest {
                 WorkDay(14, "2026-09-07", 8.0, dayType = WorkDayType.COMP_OFF),
                 WorkDay(16, "2026-09-09", 4.0, compOffHours = 4.0),
                 WorkDay(17, "2026-09-10", 0.0, dayType = WorkDayType.UNPAID, isRecorded = false),
+                WorkDay(18, "2026-09-11", 4.0, dayType = WorkDayType.SICK_LEAVE, compOffHours = 4.0),
                 WorkDay(15, "2026-09-08", 10.0, dayType = WorkDayType.MANUAL, manualSingleHours = 7.0, manualDoubleHours = 3.0,
                     manualMultiplier = 1.75)
             )
@@ -147,6 +148,16 @@ class BackupCodecTest {
         assertEquals(sample, restored)
         assertTrue(restored.settings!!.summaryQuickAddEnabled)
         assertEquals(DEFAULT_CUSTOM_THEME_COLOR, restored.settings!!.customThemeColor)
+    }
+
+    @Test fun sickLeaveAmountRoundTripsAndVersion16BackupsDefaultToZero() {
+        val data = sample.copy(settings = sample.settings!!.copy(sickLeaveDailyAmount = 1200.25))
+        val json = BackupCodec.encode(data, full)
+        assertEquals(data, BackupCodec.decode(json, full))
+        val legacy = JsonParser.parseString(json).asJsonObject
+        legacy.addProperty("databaseVersion", 16)
+        legacy.getAsJsonObject("settings").remove("sickLeaveDailyAmount")
+        assertEquals(sample, BackupCodec.decode(legacy.toString(), full))
     }
 
     @Test fun version38BackupGetsClassicAdvance() {

@@ -31,6 +31,9 @@ data class SalaryBreakdown(
     val compOffHours: Double = 0.0,
     /** Дни БС (без сохранения содержания) в месяце, включая запланированные. */
     val unpaidDays: Int = 0,
+    val sickLeaveDays: Int = 0,
+    /** Оценка на руки. Хранится отдельно от зарплаты по рабочим часам. */
+    val sickLeaveEstimate: Double? = null,
     val fullSalary: Double = 0.0,
     val remainingSalary: Double = 0.0
 )
@@ -92,21 +95,27 @@ object SalaryCalculator {
      * БС — день без сохранения содержания: не рабочий для нормы, прогноза и потолка аванса.
      */
     private fun isPlannedWorkDay(date: LocalDate, type: WorkDayType?, settings: Settings): Boolean = when (type) {
-        WorkDayType.HOLIDAY, WorkDayType.COMP_WORK, WorkDayType.UNPAID -> false
+        WorkDayType.HOLIDAY, WorkDayType.COMP_WORK, WorkDayType.UNPAID, WorkDayType.SICK_LEAVE -> false
         WorkDayType.REGULAR, WorkDayType.COMP_OFF -> true
         else -> isScheduledWorkDay(date, settings)
     }
 
     fun calculate(days: List<WorkDay>, settings: Settings, plannedHours: Double): SalaryBreakdown {
+        val sickLeaveDays = days.count { it.dayType == WorkDayType.SICK_LEAVE }
+        val sickLeaveEstimate = if (sickLeaveDays > 0 && settings.sickLeaveDailyAmount > 0.0) {
+            (sickLeaveDays * settings.sickLeaveDailyAmount).takeIf { it.isFinite() }
+        } else null
         if (plannedHours <= 0.0) {
             val advance = calculateAdvance(days, settings)
             return SalaryBreakdown(
                 advanceHours = advance.hours,
                 advanceExtraHours = advance.extraHours,
-                advance = advance.hours * settings.contractHourlyRate
+                advance = advance.hours * settings.contractHourlyRate,
+                sickLeaveDays = sickLeaveDays,
+                sickLeaveEstimate = sickLeaveEstimate
             )
         }
-        val recorded = days.filter { it.isRecorded }
+        val recorded = days.filter { it.isRecorded && it.dayType != WorkDayType.SICK_LEAVE }
         val manual = recorded.filter { it.dayType == WorkDayType.MANUAL }
         val classified = recorded
             .filter { it.dayType != WorkDayType.MANUAL && it.dayType != WorkDayType.COMP_WORK }
@@ -149,6 +158,8 @@ object SalaryCalculator {
             compOffHours = recorded.filter { it.dayType == WorkDayType.COMP_OFF }.sumOf { it.totalHours } +
                 recorded.sumOf { it.compOffHours },
             unpaidDays = days.count { it.dayType == WorkDayType.UNPAID },
+            sickLeaveDays = sickLeaveDays,
+            sickLeaveEstimate = sickLeaveEstimate,
             fullSalary = full,
             remainingSalary = full - advance
         )
@@ -171,7 +182,7 @@ object SalaryCalculator {
      * Выход за отгул в аванс не идёт — он не оплачивается.
      */
     private fun calculateAdvance(days: List<WorkDay>, settings: Settings): AdvanceHours {
-        val firstHalf = days.filter { it.isRecorded }.mapNotNull { day ->
+        val firstHalf = days.filter { it.isRecorded && it.dayType != WorkDayType.SICK_LEAVE }.mapNotNull { day ->
             LocalDate.parse(day.date).takeIf { it.dayOfMonth <= 15 }?.let { day to it }
         }
         val regular = firstHalf.sumOf { (day, date) ->
@@ -210,7 +221,7 @@ object SalaryCalculator {
 
     private fun isRegularDay(day: WorkDay, date: LocalDate, settings: Settings): Boolean =
         when (day.dayType) {
-            WorkDayType.HOLIDAY, WorkDayType.COMP_WORK -> false
+            WorkDayType.HOLIDAY, WorkDayType.COMP_WORK, WorkDayType.SICK_LEAVE -> false
             // Часы, отмеченные в день БС, оплачиваются как обычные: день не рабочий только для нормы.
             WorkDayType.REGULAR, WorkDayType.COMP_OFF, WorkDayType.UNPAID -> true
             WorkDayType.AUTO, WorkDayType.MANUAL -> isScheduledWorkDay(date, settings)

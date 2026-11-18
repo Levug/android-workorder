@@ -24,7 +24,7 @@ data class BackupSnapshot(
 object BackupCodec {
     private const val FULL_FORMAT = "workorder.database"
     private const val CONFIG_FORMAT = "workorder.settings"
-    private const val DATABASE_VERSION = 16
+    private const val DATABASE_VERSION = 17
     private val gson = GsonBuilder().serializeNulls().setPrettyPrinting().create()
 
     fun encode(data: BackupSnapshot, kind: TransferKind): String {
@@ -65,6 +65,7 @@ object BackupCodec {
         val advanceFillRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 14
         val togglesRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 15
         val partialCompRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 16
+        val sickLeaveAmountRequired = full && (root.get("databaseVersion")?.asInt ?: 0) >= 17
         val operations = root.objects("operations").map { op ->
             Operation(
                 id = op.long("id", if (full) null else 0L),
@@ -97,7 +98,8 @@ object BackupCodec {
                 bankEnabled = s.bool("bankEnabled", if (togglesRequired) null else true),
                 daySwipeEnabled = s.bool("daySwipeEnabled", if (togglesRequired) null else true),
                 calendarHeatEnabled = s.bool("calendarHeatEnabled", if (togglesRequired) null else true),
-                quickAddEnabled = s.bool("quickAddEnabled", if (togglesRequired) null else true)
+                quickAddEnabled = s.bool("quickAddEnabled", if (togglesRequired) null else true),
+                sickLeaveDailyAmount = s.number("sickLeaveDailyAmount", if (sickLeaveAmountRequired) null else 0.0)
             )
         }
         val data = BackupSnapshot(
@@ -142,6 +144,7 @@ object BackupCodec {
         data.settings?.let {
             require(it.id == 1) { "Некорректный ID настроек" }
             nonNegative(it.hourlyRate); nonNegative(it.contractHourlyRate); nonNegative(it.defaultDayHours)
+            nonNegative(it.sickLeaveDailyAmount)
             require(it.defaultDayHours > 0) { "Продолжительность смены должна быть положительной" }
             require(it.interfaceScale.isFinite() && it.interfaceScale in 0.85..1.3) { "Масштаб должен быть от 85 до 130%" }
             require(parseQuickAmounts(it.quickAmounts) != null) { "Быстрые партии: от 1 до 6 разных чисел от 1 до 9999" }
@@ -161,14 +164,16 @@ object BackupCodec {
             require(it.isRecorded || it.totalHours == 0.0) { "План специализации не должен содержать часы присутствия" }
             nonNegative(it.manualSingleHours); nonNegative(it.manualDoubleHours)
             nonNegative(it.compOffHours)
-            require(it.compOffHours == 0.0 || (it.isRecorded && it.dayType.allowsPartialCompOff)) {
+            require(it.compOffHours == 0.0 || (it.isRecorded &&
+                (it.dayType.allowsPartialCompOff || it.dayType == WorkDayType.SICK_LEAVE))) {
                 "Отгул на часть дня возможен только у отмеченных дней «По графику» и «Рабочий»"
             }
             require(it.totalHours + it.compOffHours <= 24.0) { "В сутках не больше 24 часов" }
             require(it.manualMultiplier.isFinite() && it.manualMultiplier in MANUAL_MULTIPLIER_RANGE) {
                 "Коэффициент ручного режима: от 1 до 10"
             }
-            if (it.dayType == WorkDayType.MANUAL) {
+            if (it.dayType == WorkDayType.MANUAL ||
+                (it.dayType == WorkDayType.SICK_LEAVE && (it.manualSingleHours > 0 || it.manualDoubleHours > 0))) {
                 require(it.isRecorded && kotlin.math.abs(it.manualSingleHours + it.manualDoubleHours - it.totalHours) < 1e-6) {
                     "Ручной режим: одинарные и двойные часы должны давать часы дня"
                 }

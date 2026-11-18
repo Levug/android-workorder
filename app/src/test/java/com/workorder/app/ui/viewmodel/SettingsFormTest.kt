@@ -67,4 +67,13 @@ class SettingsFormTest {
         assertTrue(form.valid)
         assertEquals(listOf(1, 2, 5, 10, 17, 25), form.applyTo(Settings()).quickAmountList)
     }
+
+    @Test fun sickLeaveAmountSupportsRublesAndKopecksOrZeroToDisable() {
+        val field = SettingsForm.SICK_LEAVE
+        val form = SettingsForm(Settings(), mapOf(field to "1 200,25"))
+        assertEquals(1200.25, form.applyTo(Settings()).sickLeaveDailyAmount, 0.0)
+        val reset = form.copy(edits = mapOf(field to "0"))
+        assertEquals(0.0, reset.applyTo(Settings(sickLeaveDailyAmount = 800.0)).sickLeaveDailyAmount, 0.0)
+        listOf("-1", "NaN", "Infinity").forEach { assertFalse(form.copy(edits = mapOf(field to it)).valid) }
+    }
 }

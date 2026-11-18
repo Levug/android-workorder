@@ -8,6 +8,8 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -17,6 +19,8 @@ import com.workorder.app.data.AppDatabase
 import com.workorder.app.data.model.Operation
 import com.workorder.app.data.model.WorkDayType
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.After
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -57,6 +61,50 @@ class ScreenshotTourTest {
         tour("360-font130")
     }
 
+    @Test @Config(sdk = [28], qualifiers = "w320dp-h700dp-mdpi")
+    fun firstShift() {
+        RuntimeEnvironment.setFontScale(1.3f)
+        outDir.mkdirs()
+        val app = ApplicationProvider.getApplicationContext<WorkOrderApp>()
+        val db = AppDatabase.getDatabase(app)
+        val date = LocalDate.now().toString()
+        ActivityScenario.launch(MainActivity::class.java).use {
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText("Записать часы")).fetchSemanticsNodes().isNotEmpty() }
+            shot("first-shift", "today")
+            click("Записать часы")
+            shot("first-shift", "hours")
+            click("Отмена")
+            assertNull(runBlocking { db.workDayDao().getByDate(date) })
+            click("Добавить операцию", exact = true)
+            compose.onNodeWithText("Название").performTextInput("Шлифовка")
+            compose.onNodeWithText("Норма на штуку, ч").performTextInput("0,5")
+            click("Сохранить и указать количество")
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText("Своё количество")).fetchSemanticsNodes().isNotEmpty() }
+            assertNull(runBlocking { db.workDayDao().getByDate(date) })
+            compose.onNodeWithText("Своё количество").performTextInput("3")
+            click("Добавить", exact = true)
+            compose.waitUntil(10_000) { compose.onAllNodes(hasText("Добавлено +3")).fetchSemanticsNodes().isNotEmpty() }
+            assertEquals(8.0, runBlocking { db.workDayDao().getByDate(date) }!!.totalHours, 0.0)
+            click("Закрыть", exact = true)
+            clickDescription("Следующий день")
+            click("Записать часы", exact = true)
+            click("11 ч", exact = true)
+            click("Сохранить", exact = true)
+            val tomorrow = LocalDate.parse(date).plusDays(1).toString()
+            compose.waitUntil(10_000) { runBlocking { db.workDayDao().getByDate(tomorrow) }?.totalHours == 11.0 }
+            clickDescription("Назад")
+            shot("first-shift", "saved")
+            click("Отчёты", exact = true)
+            compose.waitUntil(10_000) {
+                ShadowLooper.idleMainLooper()
+                compose.onAllNodes(hasText("Указать ставку")).fetchSemanticsNodes().isNotEmpty()
+            }
+            shot("first-shift", "reports")
+            click("Указать ставку", exact = true)
+            compose.onNodeWithText("Ставки").assertExists()
+        }
+    }
+
     private fun tour(prefix: String) {
         outDir.mkdirs()
         seed()
@@ -92,8 +140,7 @@ class ScreenshotTourTest {
             click("Сегодня")
             clickDescription("Предыдущий день")
             clickDescription("Предыдущий день")
-            waitForText("выработка")
-            shot(prefix, "13-empty-day")
+            shot(prefix, "13-selected-day")
         }
     }
 
@@ -138,6 +185,7 @@ class ScreenshotTourTest {
         compose.waitForIdle()
         val nodes = compose.onAllNodes(hasText(text, substring = !exact) and hasClickAction(), useUnmergedTree = false)
         if (optional && nodes.fetchSemanticsNodes().isEmpty()) return
+        compose.waitUntil(10_000) { nodes.fetchSemanticsNodes().isNotEmpty() }
         nodes.onFirst().performClick()
         compose.waitForIdle()
     }
