@@ -1,30 +1,22 @@
-<img src="docs/images/app-icon.png" alt="Иконка приложения «Наряд»" width="88" height="88" align="right">
+<img src="docs/images/app-icon.png" alt="" width="64" height="64" align="right">
 
 # Наряд
 
-Учёт рабочих смен, выполненных операций и нормо-часов на Android. В конце месяца можно сверить выработку и расчёт зарплаты и сохранить отчёт.
+Личный журнал смен для Android. Считает выработку по выполненным операциям, а зарплату и аванс — по отработанным часам и вашим ставкам. Работает без интернета.
 
-<a href="https://github.com/Levug/android-workorder/releases/download/v4.3/WorkOrder-4.3.apk"><img src="docs/images/download-android.png" alt="Скачать APK для Android" width="248" height="48"></a>
-
-Версия 4.3 для Android 8 и новее · [RuStore](https://www.rustore.ru/catalog/app/ru.workorder) · [Wear OS](docs/USAGE_GUIDE.md#часы-wear-os)
-
-**[Руководство с картинками](docs/USAGE_GUIDE.md)** поможет записать первую смену, настроить расчёт и разобраться с отчётами.
-
-## Экраны приложения
+**Телефон · Android 8 и новее** — [Установить из RuStore](https://www.rustore.ru/catalog/app/ru.workorder) · [Скачать APK 4.3](https://github.com/Levug/android-workorder/releases/download/v4.3/WorkOrder-4.3.apk)<br>
+**Часы · Wear OS** — [Скачать APK 4.2](https://github.com/Levug/android-workorder/releases/download/v4.2/WorkOrder-4.2-watch.apk) · [Подключить к телефону](docs/USAGE_GUIDE.md#часы-wear-os)
 
 <p>
-  <a href="docs/images/guide/today.png"><img src="docs/images/guide/today.png" alt="Наряд на сегодня" width="205"></a>
-  <a href="docs/images/guide/calendar.png"><img src="docs/images/guide/calendar.png" alt="Календарь смен" width="205"></a>
-  <a href="docs/images/guide/reports.png"><img src="docs/images/guide/reports.png" alt="Месячный отчёт" width="205"></a>
+  <a href="docs/images/guide/today.png"><img src="docs/images/guide/today.png" alt="Сегодня — часы смены и выполненные операции" width="195"></a>
+  <a href="docs/images/guide/calendar.png"><img src="docs/images/guide/calendar.png" alt="Календарь — часы и типы дней за месяц" width="195"></a>
+  <a href="docs/images/guide/reports.png"><img src="docs/images/guide/reports.png" alt="Отчёты — зарплата и выработка за месяц" width="195"></a>
 </p>
 
-## Возможности
+## Первая смена
 
-- Записывайте часы смены, добавляйте операции партиями и смотрите выработку за день.
-- Отмечайте в календаре смены по графику 5/2 или 2/2, отгулы и больничные.
-- Смотрите расчёт зарплаты и аванса, сохраняйте отчёты в PDF и CSV.
-- Добавляйте виджеты на главный экран или вносите операции с часов Wear OS.
+В разделе «Сегодня» нажмите **«Записать часы»**. Для учёта нормо-часов добавьте операцию, норму времени на штуку и количество. В «Отчётах» укажите ставку. Там же можно сохранить итог месяца в PDF или CSV.
 
-Данные хранятся на устройстве, учётная запись не нужна.
+[Руководство](docs/USAGE_GUIDE.md) · [Перенос на новый телефон](docs/USAGE_GUIDE.md#резервная-копия-и-перенос-данных)
 
-[История изменений](CHANGELOG.md) · [Политика конфиденциальности](PRIVACY.md) · [Сообщить об ошибке](https://github.com/Levug/android-workorder/issues/new) · [Сборка проекта](docs/BUILD.md)
+[История версий](CHANGELOG.md) · [Сборка проекта](docs/BUILD.md) · [Конфиденциальность](PRIVACY.md) · [Сообщить об ошибке](https://github.com/Levug/android-workorder/issues/new)
